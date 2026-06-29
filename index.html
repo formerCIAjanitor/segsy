@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gantt Chart</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:            #f5f5f2;
+      --surface:       #ffffff;
+      --surface-alt:   #f0efeb;
+      --border:        rgba(0,0,0,0.12);
+      --border-strong: rgba(0,0,0,0.20);
+      --text:          #1a1a18;
+      --text-secondary:#5f5e5a;
+      --text-muted:    #9a9890;
+      --accent:        #185fa5;
+      --accent-bg:     #e6f1fb;
+      --radius:        8px;
+      --font:          system-ui, -apple-system, 'Segoe UI', sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:            #1c1c1a;
+        --surface:       #2a2a28;
+        --surface-alt:   #232321;
+        --border:        rgba(255,255,255,0.10);
+        --border-strong: rgba(255,255,255,0.18);
+        --text:          #eeecea;
+        --text-secondary:#a8a7a2;
+        --text-muted:    #6e6d69;
+        --accent:        #85b7eb;
+        --accent-bg:     #042c53;
+      }
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1.5rem;
+    }
+
+    h1 { font-size: 22px; font-weight: 500; margin-bottom: 1.5rem; }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .toolbar-group {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      padding-right: 12px;
+      border-right: 0.5px solid var(--border-strong);
+    }
+
+    .toolbar-group:last-child { border-right: none; padding-right: 0; }
+
+    label.tb { font-size: 13px; color: var(--text-secondary); }
+
+    input[type="date"], select {
+      font-size: 13px; font-family: var(--font);
+      padding: 7px 10px;
+      border-radius: var(--radius);
+      border: 0.5px solid var(--border-strong);
+      background: var(--surface); color: var(--text);
+      outline: none; cursor: pointer;
+    }
+
+    input[type="date"]:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(24,95,165,0.15);
+    }
+
+    button {
+      font-size: 13px; font-family: var(--font);
+      padding: 7px 12px;
+      border-radius: var(--radius);
+      border: 0.5px solid var(--border-strong);
+      background: var(--surface); color: var(--text);
+      cursor: pointer;
+      display: inline-flex; align-items: center; gap: 5px;
+      transition: background 0.1s;
+      white-space: nowrap;
+    }
+
+    button:hover  { background: var(--surface-alt); }
+    button:active { transform: scale(0.98); }
+    .zoom-btn { padding: 7px 10px; }
+
+    .chart-container {
+      overflow-x: auto;
+      border: 0.5px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      position: relative;
+    }
+
+    table { border-collapse: collapse; width: 100%; min-width: 580px; }
+    .task-col { width: 160px; min-width: 160px; }
+
+    .date-header {
+      font-size: 11px; color: var(--text-muted);
+      text-align: center;
+      padding: 6px 2px;
+      border-bottom: 0.5px solid var(--border);
+      border-right: 0.5px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .date-header.weekend  { background: var(--surface-alt); }
+    .date-header.today-col { background: var(--accent-bg); color: var(--accent); font-weight: 500; }
+
+    .task-label {
+      padding: 6px 10px;
+      border-bottom: 0.5px solid var(--border);
+      border-right: 0.5px solid var(--border);
+      font-size: 13px; color: var(--text);
+      display: flex; align-items: center; gap: 6px;
+      white-space: nowrap; max-width: 160px;
+    }
+
+    .drag-handle {
+      color: var(--text-muted);
+      cursor: grab;
+      font-size: 14px; flex-shrink: 0;
+      padding: 2px; border-radius: 4px;
+      transition: color 0.1s, background 0.1s;
+    }
+
+    .drag-handle:hover  { color: var(--text); background: var(--surface-alt); }
+    .drag-handle:active { cursor: grabbing; }
+
+    .task-label input {
+      background: transparent; border: none; outline: none;
+      font-size: 13px; font-family: var(--font); color: var(--text);
+      width: 100%; cursor: pointer; min-width: 0;
+    }
+
+    .task-label input:focus {
+      background: var(--surface-alt);
+      border-radius: 4px; padding: 1px 4px; cursor: text;
+    }
+
+    .color-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      flex-shrink: 0; cursor: pointer;
+      border: 1.5px solid transparent;
+      transition: border-color 0.1s;
+    }
+
+    .color-dot:hover { border-color: var(--border-strong); }
+
+    .cell {
+      border-bottom: 0.5px solid var(--border);
+      border-right: 0.5px solid var(--border);
+      height: 36px; position: relative;
+    }
+
+    .cell.weekend   { background: var(--surface-alt); }
+    .cell.today-col { background: var(--accent-bg); }
+
+    .today-line {
+      position: absolute; top: 0; bottom: 0; width: 2px;
+      background: var(--accent); opacity: 0.6;
+      pointer-events: none; z-index: 10;
+    }
+
+    .bar {
+      position: absolute; top: 6px; bottom: 6px;
+      border-radius: 4px; cursor: grab;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden; user-select: none;
+      transition: opacity 0.1s; min-width: 6px; z-index: 2;
+    }
+
+    .bar:hover  { opacity: 0.85; }
+    .bar:active { cursor: grabbing; }
+
+    .resize-handle {
+      position: absolute; top: 0; bottom: 0; width: 7px;
+    }
+    .resize-handle.left  { left: 0;  cursor: w-resize; }
+    .resize-handle.right { right: 0; cursor: e-resize; }
+
+    .bar-label {
+      pointer-events: none; padding: 0 6px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 100%; font-size: 11px; font-weight: 500; color: #fff;
+    }
+
+    .row-ghost td    { opacity: 0.4; background: var(--accent-bg) !important; }
+    .row-drop-above td { border-top: 2px solid var(--accent) !important; }
+    .row-drop-below td { border-bottom: 2px solid var(--accent) !important; }
+
+    .add-row {
+      padding: 7px 10px; font-size: 12px; color: var(--text-muted);
+      cursor: pointer; border-top: 0.5px solid var(--border);
+      display: flex; align-items: center; gap: 5px;
+      border-radius: 0 0 12px 12px;
+      transition: background 0.1s, color 0.1s;
+    }
+
+    .add-row:hover { background: var(--accent-bg); color: var(--accent); }
+
+    .color-picker-popup {
+      position: fixed; z-index: 200;
+      background: var(--surface);
+      border: 0.5px solid var(--border-strong);
+      border-radius: var(--radius);
+      padding: 8px; display: flex; gap: 6px; flex-wrap: wrap; width: 126px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.14);
+    }
+
+    .color-swatch {
+      width: 22px; height: 22px; border-radius: 50%;
+      cursor: pointer; border: 2px solid transparent;
+      transition: border-color 0.1s, transform 0.1s;
+    }
+
+    .color-swatch:hover  { transform: scale(1.15); }
+    .color-swatch.active { border-color: var(--text); }
+
+    .toast {
+      position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+      background: var(--text); color: var(--bg);
+      padding: 8px 16px; border-radius: var(--radius);
+      font-size: 13px; z-index: 500;
+      transition: opacity 0.4s; pointer-events: none;
+    }
+
+    footer { margin-top: 1.5rem; font-size: 12px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+<h1>Gantt chart</h1>
+
+<div class="toolbar">
+  <div class="toolbar-group">
+    <label class="tb" for="startDate">Start</label>
+    <input type="date" id="startDate" />
+    <select id="viewRange">
+      <option value="14">2 weeks</option>
+      <option value="30" selected>1 month</option>
+      <option value="60">2 months</option>
+      <option value="90">3 months</option>
+    </select>
+  </div>
+  <div class="toolbar-group">
+    <button class="zoom-btn" onclick="zoom(-1)" title="Zoom out"><i class="ti ti-zoom-out" aria-hidden="true"></i></button>
+    <button class="zoom-btn" onclick="zoom(1)"  title="Zoom in"><i class="ti ti-zoom-in"  aria-hidden="true"></i></button>
+  </div>
+  <div class="toolbar-group">
+    <button onclick="addTask()"><i class="ti ti-plus" aria-hidden="true"></i> Add task</button>
+  </div>
+  <div class="toolbar-group">
+    <button onclick="downloadJSON()"><i class="ti ti-download" aria-hidden="true"></i> Save JSON</button>
+    <button onclick="triggerLoad()"><i class="ti ti-folder-open" aria-hidden="true"></i> Load JSON</button>
+    <input type="file" id="fileInput" accept=".json" style="display:none" />
+  </div>
+  <div class="toolbar-group">
+    <button onclick="exportPNG()"><i class="ti ti-photo-down" aria-hidden="true"></i> Export PNG</button>
+  </div>
+</div>
+
+<div class="chart-container" id="chartContainer">
+  <table id="ganttTable">
+    <thead id="ganttHead"></thead>
+    <tbody id="ganttBody"></tbody>
+  </table>
+  <div class="add-row" onclick="addTask()">
+    <i class="ti ti-plus" aria-hidden="true"></i> Add task
+  </div>
+  <div class="today-line" id="todayLine" style="display:none;"></div>
+</div>
+
+<div id="colorPicker" class="color-picker-popup" style="display:none;"></div>
+
+<footer>
+  Drag <i class="ti ti-grip-vertical" style="font-size:12px;"></i> to reorder rows &nbsp;·&nbsp;
+  Right-click a task label to delete &nbsp;·&nbsp;
+  Drag bar edges to resize &nbsp;·&nbsp;
+  Changes are auto-saved in your browser
+</footer>
+
+<script>
+const COLORS      = ['#378ADD','#1D9E75','#D85A30','#D4537E','#7F77DD','#BA7517','#639922','#E24B4A','#888780'];
+const COLOR_NAMES = ['Blue','Teal','Coral','Pink','Purple','Amber','Green','Red','Gray'];
+
+let tasks = [
+  { id:1, name:'Experiment 1',    start:0,  dur:5,  color:'#378ADD' },
+  { id:2, name:'Experiment 2',      start:5,  dur:7,  color:'#1D9E75' },
+  { id:3, name:'Symposium', start:10, dur:14, color:'#7F77DD' },
+  { id:4, name:'Internship',     start:22, dur:6,  color:'#D85A30' },
+  { id:5, name:'CR writeup', start:28, dur:3,  color:'#D4537E' },
+];
+let nextId   = 6;
+let days     = 30;
+let cellW    = 28;
+let baseDate = new Date(); baseDate.setHours(0,0,0,0);
+
+// ── Controls ───────────────────────────────────────────────────────────
+const startInput = document.getElementById('startDate');
+startInput.value = baseDate.toISOString().slice(0,10);
+startInput.addEventListener('change', () => {
+  baseDate = new Date(startInput.value+'T00:00:00'); render(); autoSave();
+});
+document.getElementById('viewRange').addEventListener('change', e => {
+  days = +e.target.value; render(); autoSave();
+});
+
+document.getElementById('fileInput').addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      applyChartData(JSON.parse(ev.target.result));
+      showToast('Chart loaded');
+    } catch { showToast('Could not read file'); }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────
+function addDays(d,n) { const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+function dayOffset(d) { return Math.round((d-baseDate)/86400000); }
+function fmtDate(d)   { return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
+function fmtISO(d)    { return d.toISOString().slice(0,10); }
+
+function zoom(dir) { cellW=Math.min(60,Math.max(16,cellW+dir*6)); render(); autoSave(); }
+
+// ── Render ─────────────────────────────────────────────────────────────
+function render() {
+  const today    = new Date(); today.setHours(0,0,0,0);
+  const todayOff = dayOffset(today);
+
+  // Header
+  const head = document.getElementById('ganttHead');
+  let hHTML = `<tr><th class="task-col date-header" style="text-align:left;padding:6px 10px;color:var(--text-secondary);font-size:12px;font-weight:500;">Task</th>`;
+  for (let i=0; i<days; i++) {
+    const d    = addDays(baseDate,i);
+    const isWE = d.getDay()===0||d.getDay()===6;
+    const isTd = i===todayOff;
+    const show = cellW>=22 ? i%7===0 : i%14===0;
+    hHTML += `<th class="date-header${isWE?' weekend':''}${isTd?' today-col':''}" style="width:${cellW}px;min-width:${cellW}px;">${show?fmtDate(d):''}</th>`;
+  }
+  head.innerHTML = hHTML+'</tr>';
+
+  // Body
+  const body = document.getElementById('ganttBody');
+  body.innerHTML = '';
+
+  tasks.forEach(task => {
+    const tr = document.createElement('tr');
+    tr.dataset.id = task.id;
+
+    const labelTd = document.createElement('td');
+    labelTd.className = 'task-label';
+    labelTd.innerHTML = `
+      <span class="drag-handle" data-id="${task.id}" aria-label="Drag to reorder"><i class="ti ti-grip-vertical"></i></span>
+      <div class="color-dot" style="background:${task.color}" data-id="${task.id}" title="Change color"></div>
+      <input value="${task.name}" data-id="${task.id}" title="Click to rename" />
+    `;
+    tr.appendChild(labelTd);
+
+    for (let i=0; i<days; i++) {
+      const d    = addDays(baseDate,i);
+      const isWE = d.getDay()===0||d.getDay()===6;
+      const isTd = i===todayOff;
+      const td   = document.createElement('td');
+      td.className = 'cell'+(isWE?' weekend':'')+(isTd?' today-col':'');
+      td.style.cssText = `width:${cellW}px;min-width:${cellW}px;`;
+      td.dataset.day    = i;
+      td.dataset.taskId = task.id;
+      tr.appendChild(td);
+    }
+
+    body.appendChild(tr);
+
+    // Bar
+    const barStart = Math.max(0,task.start);
+    const barEnd   = Math.min(days,task.start+task.dur);
+    if (barStart<days && barEnd>0) {
+      const startCell = tr.cells[barStart+1];
+      if (startCell) {
+        const span = barEnd-barStart;
+        const bar  = document.createElement('div');
+        bar.className  = 'bar';
+        bar.dataset.id = task.id;
+        bar.style.cssText = `background:${task.color};left:0;width:calc(${span*100}% + ${span-1}px);`;
+        bar.innerHTML = `
+          <div class="resize-handle left"  data-id="${task.id}" data-action="left"></div>
+          <span class="bar-label">${task.name}</span>
+          <div class="resize-handle right" data-id="${task.id}" data-action="right"></div>
+        `;
+        startCell.appendChild(bar);
+      }
+    }
+
+    // Rename
+    labelTd.querySelector('input').addEventListener('change', e => {
+      const t=tasks.find(x=>x.id===+e.target.dataset.id);
+      if (t) { t.name=e.target.value; render(); autoSave(); }
+    });
+
+    // Color
+    labelTd.querySelector('.color-dot').addEventListener('click', e => {
+      e.stopPropagation(); showColorPicker(task.id, e.currentTarget);
+    });
+
+    // Delete
+    labelTd.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      if (tasks.length>1 && confirm(`Delete "${task.name}"?`)) {
+        tasks=tasks.filter(x=>x.id!==task.id); render(); autoSave();
+      }
+    });
+  });
+
+  setupBarDrag();
+  setupRowDrag();
+  renderTodayLine(todayOff);
+}
+
+// ── Today line ─────────────────────────────────────────────────────────
+function renderTodayLine(todayOff) {
+  const line = document.getElementById('todayLine');
+  if (todayOff<0||todayOff>=days) { line.style.display='none'; return; }
+  const headerRow = document.getElementById('ganttHead').rows[0];
+  const cell      = headerRow?.cells[todayOff+1];
+  if (!cell) { line.style.display='none'; return; }
+  const tableRect = document.getElementById('ganttTable').getBoundingClientRect();
+  const cellRect  = cell.getBoundingClientRect();
+  const left      = cellRect.left - tableRect.left + cellRect.width/2;
+  line.style.cssText = `display:block;position:absolute;top:0;bottom:0;left:${left}px;width:2px;background:var(--accent);opacity:0.6;pointer-events:none;z-index:10;`;
+}
+
+// ── Bar drag & resize ──────────────────────────────────────────────────
+let dragState = null;
+
+function setupBarDrag() {
+  document.querySelectorAll('.bar').forEach(b  => b.addEventListener('mousedown', onBarMousedown));
+  document.querySelectorAll('.cell').forEach(c => c.addEventListener('mousedown', onCellMousedown));
+}
+
+function onBarMousedown(e) {
+  const action = e.target.dataset.action;
+  const id     = +(e.currentTarget.dataset.id||e.target.dataset.id);
+  const task   = tasks.find(t=>t.id===id);
+  if (!task) return;
+  dragState = action
+    ? {type:'resize',action,task,startX:e.clientX,origStart:task.start,origDur:task.dur}
+    : {type:'move',  task,   startX:e.clientX,origStart:task.start};
+  e.preventDefault(); e.stopPropagation();
+}
+
+function onCellMousedown(e) {
+  if (e.button!==0) return;
+  const day=+e.currentTarget.dataset.day, taskId=+e.currentTarget.dataset.taskId;
+  const task=tasks.find(t=>t.id===taskId);
+  if (!task) return;
+  if (day<task.start||day>=task.start+task.dur) {
+    dragState={type:'move',task,startX:e.clientX,origStart:task.start};
+    e.preventDefault();
+  }
+}
+
+document.addEventListener('mousemove', e => {
+  if (!dragState) return;
+  const delta = Math.round((e.clientX-dragState.startX)/cellW);
+  const {task,origStart,origDur,type,action} = dragState;
+  if (type==='move') {
+    task.start=Math.max(0,Math.min(days-task.dur,origStart+delta));
+  } else if (action==='left') {
+    const ns=Math.max(0,Math.min(origStart+origDur-1,origStart+delta));
+    task.dur=Math.max(1,origDur-(ns-origStart)); task.start=ns;
+  } else {
+    task.dur=Math.max(1,Math.min(days-origStart,origDur+delta));
+  }
+  render();
+});
+
+document.addEventListener('mouseup', () => { if (dragState) { dragState=null; autoSave(); } });
+
+// ── Vertical row reorder ───────────────────────────────────────────────
+let rowDrag = null;
+
+function setupRowDrag() {
+  document.querySelectorAll('.drag-handle').forEach(h => h.addEventListener('mousedown', onHandleMousedown));
+}
+
+function onHandleMousedown(e) {
+  if (e.button!==0) return;
+  const id = +e.currentTarget.dataset.id;
+  const tr = e.currentTarget.closest('tr');
+  rowDrag  = {id, tr, startY:e.clientY, dragging:false, overIndex:null, dropBefore:true};
+  e.preventDefault(); e.stopPropagation();
+}
+
+document.addEventListener('mousemove', e => {
+  if (!rowDrag) return;
+  if (!rowDrag.dragging && Math.abs(e.clientY-rowDrag.startY)>4) {
+    rowDrag.dragging = true;
+    rowDrag.tr.classList.add('row-ghost');
+    document.body.style.cursor = 'grabbing';
+  }
+  if (!rowDrag.dragging) return;
+
+  const rows = Array.from(document.querySelectorAll('#ganttBody tr'));
+  rows.forEach(r => r.classList.remove('row-drop-above','row-drop-below'));
+  rowDrag.overIndex = null;
+
+  for (let i=0; i<rows.length; i++) {
+    const rect = rows[i].getBoundingClientRect();
+    if (e.clientY>=rect.top && e.clientY<=rect.bottom && rows[i]!==rowDrag.tr) {
+      const before = e.clientY < rect.top + rect.height/2;
+      rows[i].classList.add(before ? 'row-drop-above' : 'row-drop-below');
+      rowDrag.overIndex  = i;
+      rowDrag.dropBefore = before;
+      break;
+    }
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  if (!rowDrag) return;
+  document.body.style.cursor = '';
+  document.querySelectorAll('#ganttBody tr').forEach(r =>
+    r.classList.remove('row-ghost','row-drop-above','row-drop-below')
+  );
+  if (rowDrag.dragging && rowDrag.overIndex !== null) {
+    const srcIdx  = tasks.findIndex(t=>t.id===rowDrag.id);
+    const [moved] = tasks.splice(srcIdx,1);
+    let dest = rowDrag.overIndex;
+    if (!rowDrag.dropBefore) dest++;
+    if (srcIdx < rowDrag.overIndex) dest--;
+    tasks.splice(Math.max(0,Math.min(tasks.length,dest)),0,moved);
+    autoSave();
+  }
+  rowDrag = null;
+  render();
+});
+
+// ── Add task ───────────────────────────────────────────────────────────
+function addTask() {
+  const last  = tasks.slice(-1)[0];
+  const start = last ? Math.min(last.start+last.dur, days-3) : 0;
+  tasks.push({id:nextId++, name:'New task', start, dur:5, color:COLORS[tasks.length%COLORS.length]});
+  render(); autoSave();
+}
+
+// ── Color picker ───────────────────────────────────────────────────────
+let colorTarget = null;
+
+function showColorPicker(taskId, anchor) {
+  colorTarget = taskId;
+  const picker = document.getElementById('colorPicker');
+  const task   = tasks.find(x=>x.id===taskId);
+  picker.innerHTML = COLORS.map((c,i) =>
+    `<div class="color-swatch${task&&task.color===c?' active':''}" style="background:${c}" title="${COLOR_NAMES[i]}" data-color="${c}"></div>`
+  ).join('');
+  picker.querySelectorAll('.color-swatch').forEach(s => {
+    s.addEventListener('click', () => {
+      const t=tasks.find(x=>x.id===colorTarget);
+      if (t) t.color=s.dataset.color;
+      picker.style.display='none'; render(); autoSave();
+    });
+  });
+  const rect = anchor.getBoundingClientRect();
+  picker.style.cssText=`display:flex;top:${rect.bottom+4+window.scrollY}px;left:${rect.left+window.scrollX}px;`;
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.color-picker-popup')&&!e.target.closest('.color-dot'))
+    document.getElementById('colorPicker').style.display='none';
+});
+
+// ── Chart data helpers ─────────────────────────────────────────────────
+function chartData() {
+  return { version:1, baseDate:fmtISO(baseDate), days, cellW, tasks };
+}
+
+function applyChartData(data) {
+  tasks    = data.tasks;
+  days     = data.days  || 30;
+  cellW    = data.cellW || 28;
+  baseDate = new Date(data.baseDate+'T00:00:00');
+  nextId   = Math.max(...tasks.map(t=>t.id))+1;
+  startInput.value = data.baseDate;
+  document.getElementById('viewRange').value = String(days);
+  render();
+}
+
+// ── Auto-save (localStorage) ───────────────────────────────────────────
+function autoSave() {
+  try { localStorage.setItem('gantt_chart', JSON.stringify(chartData())); } catch {}
+}
+
+// ── Download JSON ──────────────────────────────────────────────────────
+function downloadJSON() {
+  const blob = new Blob([JSON.stringify(chartData(), null, 2)], {type:'application/json'});
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = 'gantt.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('JSON downloaded');
+}
+
+// ── Load JSON from file ────────────────────────────────────────────────
+function triggerLoad() { document.getElementById('fileInput').click(); }
+
+// ── Export PNG ─────────────────────────────────────────────────────────
+function exportPNG() {
+  const DPR     = 2;
+  const ROW_H   = 36;
+  const LABEL_W = 160;
+  const HEAD_H  = 30;
+
+  const W = LABEL_W + days*cellW;
+  const H = HEAD_H  + tasks.length*ROW_H;
+
+  const canvas  = document.createElement('canvas');
+  canvas.width  = W*DPR; canvas.height = H*DPR;
+  const ctx     = canvas.getContext('2d');
+  ctx.scale(DPR,DPR);
+
+  const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const C = dark
+    ? {bg:'#2a2a28', alt:'#232321', border:'rgba(255,255,255,0.10)',
+       text:'#eeecea', muted:'#6e6d69', accent:'#85b7eb', accentBg:'#042c53'}
+    : {bg:'#ffffff',  alt:'#f0efeb', border:'rgba(0,0,0,0.12)',
+       text:'#1a1a18', muted:'#9a9890', accent:'#185fa5', accentBg:'#e6f1fb'};
+
+  const today    = new Date(); today.setHours(0,0,0,0);
+  const todayOff = dayOffset(today);
+
+  // Background
+  ctx.fillStyle = C.bg; ctx.fillRect(0,0,W,H);
+
+  // Header
+  for (let i=0; i<days; i++) {
+    const d    = addDays(baseDate,i);
+    const isWE = d.getDay()===0||d.getDay()===6;
+    const isTd = i===todayOff;
+    const x    = LABEL_W+i*cellW;
+    if (isWE) { ctx.fillStyle=C.alt;      ctx.fillRect(x,0,cellW,HEAD_H); }
+    if (isTd) { ctx.fillStyle=C.accentBg; ctx.fillRect(x,0,cellW,HEAD_H); }
+    if (i%7===0) {
+      ctx.font      = '11px system-ui,sans-serif';
+      ctx.fillStyle = isTd ? C.accent : C.muted;
+      ctx.fillText(fmtDate(d), x+2, HEAD_H/2+4);
+    }
+    ctx.strokeStyle=C.border; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,HEAD_H); ctx.stroke();
+  }
+
+  // Header label
+  ctx.font='500 11px system-ui,sans-serif'; ctx.fillStyle=C.muted;
+  ctx.fillText('Task', 28, HEAD_H/2+4);
+
+  // Header bottom border
+  ctx.strokeStyle=C.border; ctx.lineWidth=0.5;
+  ctx.beginPath(); ctx.moveTo(0,HEAD_H); ctx.lineTo(W,HEAD_H); ctx.stroke();
+
+  // Rows
+  tasks.forEach((task,ti) => {
+    const y = HEAD_H+ti*ROW_H;
+    ctx.fillStyle=C.bg; ctx.fillRect(0,y,W,ROW_H);
+
+    for (let i=0; i<days; i++) {
+      const d    = addDays(baseDate,i);
+      const isWE = d.getDay()===0||d.getDay()===6;
+      const isTd = i===todayOff;
+      const cx   = LABEL_W+i*cellW;
+      if (isWE) { ctx.fillStyle=C.alt;      ctx.fillRect(cx,y,cellW,ROW_H); }
+      if (isTd) { ctx.fillStyle=C.accentBg; ctx.fillRect(cx,y,cellW,ROW_H); }
+      ctx.strokeStyle=C.border; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(cx,y); ctx.lineTo(cx,y+ROW_H); ctx.stroke();
+    }
+
+    // Row bottom border
+    ctx.strokeStyle=C.border; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(0,y+ROW_H); ctx.lineTo(W,y+ROW_H); ctx.stroke();
+
+    // Color dot
+    ctx.beginPath(); ctx.arc(20,y+ROW_H/2,5,0,Math.PI*2);
+    ctx.fillStyle=task.color; ctx.fill();
+
+    // Task name (truncated)
+    ctx.font='13px system-ui,sans-serif'; ctx.fillStyle=C.text;
+    let label=task.name;
+    const maxW=LABEL_W-34;
+    while (ctx.measureText(label).width>maxW && label.length>1) label=label.slice(0,-1);
+    if (label!==task.name) label=label.slice(0,-1)+'…';
+    ctx.fillText(label, 30, y+ROW_H/2+4);
+
+    // Bar
+    const barStart=Math.max(0,task.start);
+    const barEnd  =Math.min(days,task.start+task.dur);
+    if (barStart<days&&barEnd>0) {
+      const bx=LABEL_W+barStart*cellW, bw=(barEnd-barStart)*cellW-1, bh=ROW_H-12;
+      ctx.fillStyle=task.color;
+      ctx.beginPath(); ctx.roundRect(bx,y+6,bw,bh,4); ctx.fill();
+      if (bw>20) {
+        ctx.font='500 10px system-ui,sans-serif'; ctx.fillStyle='#fff';
+        ctx.save(); ctx.beginPath(); ctx.rect(bx+2,y+6,bw-4,bh); ctx.clip();
+        ctx.fillText(task.name, bx+6, y+6+bh/2+3); ctx.restore();
+      }
+    }
+  });
+
+  // Label column right border
+  ctx.strokeStyle=C.border; ctx.lineWidth=0.5;
+  ctx.beginPath(); ctx.moveTo(LABEL_W,0); ctx.lineTo(LABEL_W,H); ctx.stroke();
+
+  // Today line
+  if (todayOff>=0&&todayOff<days) {
+    const tx=LABEL_W+todayOff*cellW+cellW/2;
+    ctx.strokeStyle=C.accent; ctx.lineWidth=2; ctx.globalAlpha=0.7;
+    ctx.beginPath(); ctx.moveTo(tx,0); ctx.lineTo(tx,H); ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+
+  // Outer border
+  ctx.strokeStyle=dark?'rgba(255,255,255,0.15)':'rgba(0,0,0,0.15)'; ctx.lineWidth=1;
+  ctx.strokeRect(0,0,W,H);
+
+  const a=document.createElement('a');
+  a.href=canvas.toDataURL('image/png'); a.download='gantt.png'; a.click();
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t=document.createElement('div');
+  t.className='toast'; t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=>t.remove(),400); },1800);
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────
+(function() {
+  try {
+    const raw = localStorage.getItem('gantt_chart');
+    if (raw) applyChartData(JSON.parse(raw));
+    else render();
+  } catch { render(); }
+})();
+</script>
+</body>
+</html>
