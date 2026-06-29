@@ -112,26 +112,25 @@
     .date-header {
       font-size: 11px; color: var(--text-muted);
       text-align: center;
-      padding: 6px 0;
+      padding: 3px 2px;
       border-bottom: 0.5px solid var(--border);
       border-right: 0.5px solid var(--border);
       white-space: nowrap;
       overflow: hidden;
-      position: relative;
     }
 
-    .date-header span {
-      display: inline-block;
-      transform-origin: center center;
-    }
-
-    .date-header.has-label span {
-      writing-mode: vertical-rl;
-      transform: rotate(180deg);
-      line-height: 1;
-      max-height: 28px;
+    .month-header {
+      font-size: 11px; font-weight: 600; color: var(--text-secondary);
+      text-align: left;
+      padding: 3px 4px;
+      border-bottom: 0.5px solid var(--border-strong);
+      border-right: 0.5px solid var(--border);
+      white-space: nowrap;
       overflow: hidden;
+      background: var(--surface);
     }
+
+    .month-header-label { position: sticky; left: 164px; }
 
     .date-header.weekend  { background: var(--surface-alt); }
     .date-header.today-col { background: var(--accent-bg); color: var(--accent); font-weight: 500; }
@@ -377,23 +376,46 @@ function render() {
   const todayOff    = dayOffset(today);
   const deadlineOff = endDate ? dayOffset(endDate) : -1;
 
-  // Header
+  // ── Header row 1: month spans ──────────────────────────────────────────
   const head = document.getElementById('ganttHead');
-  let hHTML = `<tr><th class="task-col date-header" style="text-align:left;padding:6px 10px;color:var(--text-secondary);font-size:12px;font-weight:500;">Task</th>`;
-  for (let i=0; i<days; i++) {
-    const d      = addDays(baseDate,i);
+
+  // Build month spans: group consecutive days by month
+  const monthSpans = [];
+  for (let i = 0; i < days; i++) {
+    const d = addDays(baseDate, i);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    if (!monthSpans.length || monthSpans[monthSpans.length-1].key !== key) {
+      monthSpans.push({ key, label: d.toLocaleString('default', {month:'short', year:'numeric'}), count: 1 });
+    } else {
+      monthSpans[monthSpans.length-1].count++;
+    }
+  }
+
+  let row1 = `<tr><th class="task-col month-header" style="text-align:left;padding:3px 10px;color:var(--text-secondary);font-size:12px;font-weight:500;">Task</th>`;
+  for (const ms of monthSpans) {
+    const w = ms.count * cellW;
+    row1 += `<th class="month-header" colspan="${ms.count}" style="min-width:${w}px;max-width:${w}px;"><span class="month-header-label">${ms.label}</span></th>`;
+  }
+  row1 += '</tr>';
+
+  // ── Header row 2: day numbers ───────────────────────────────────────────
+  let row2 = `<tr><th class="task-col date-header" style="border-right:0.5px solid var(--border-strong);"></th>`;
+  for (let i = 0; i < days; i++) {
+    const d      = addDays(baseDate, i);
     const isWE   = d.getDay()===0||d.getDay()===6;
     const isTd   = i===todayOff;
     const isDead = i===deadlineOff;
-    const show   = cellW>=22 ? i%7===0 : i%14===0;
+    // Show day number at week boundaries (every 7 or 14 days depending on zoom)
+    const show   = cellW >= 22 ? i % 7 === 0 : i % 14 === 0;
     let cls = 'date-header';
     if (isWE)   cls += ' weekend';
     if (isTd)   cls += ' today-col';
     if (isDead) cls += ' deadline-col';
-    if (show)   cls += ' has-label';
-    hHTML += `<th class="${cls}" style="width:${cellW}px;min-width:${cellW}px;">${show?`<span>${fmtDate(d)}</span>`:''}</th>`;
+    row2 += `<th class="${cls}" style="width:${cellW}px;min-width:${cellW}px;">${show ? d.getDate() : ''}</th>`;
   }
-  head.innerHTML = hHTML+'</tr>';
+  row2 += '</tr>';
+
+  head.innerHTML = row1 + row2;
 
   // Body
   const body = document.getElementById('ganttBody');
@@ -742,7 +764,9 @@ function exportPNG() {
   const DPR     = 2;
   const ROW_H   = 36;
   const LABEL_W = 160;
-  const HEAD_H  = 30;
+  const MONTH_H = 20;
+  const DAY_H   = 20;
+  const HEAD_H  = MONTH_H + DAY_H;
 
   const W = LABEL_W + days*cellW;
   const H = HEAD_H  + tasks.length*ROW_H;
@@ -755,38 +779,82 @@ function exportPNG() {
   const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   const C = dark
     ? {bg:'#2a2a28', alt:'#232321', border:'rgba(255,255,255,0.10)',
-       text:'#eeecea', muted:'#6e6d69', accent:'#85b7eb', accentBg:'#042c53'}
+       borderStrong:'rgba(255,255,255,0.18)',
+       text:'#eeecea', muted:'#6e6d69', secondary:'#a8a7a2',
+       accent:'#85b7eb', accentBg:'#042c53'}
     : {bg:'#ffffff',  alt:'#f0efeb', border:'rgba(0,0,0,0.12)',
-       text:'#1a1a18', muted:'#9a9890', accent:'#185fa5', accentBg:'#e6f1fb'};
+       borderStrong:'rgba(0,0,0,0.20)',
+       text:'#1a1a18', muted:'#9a9890', secondary:'#5f5e5a',
+       accent:'#185fa5', accentBg:'#e6f1fb'};
 
   const today    = new Date(); today.setHours(0,0,0,0);
   const todayOff = dayOffset(today);
+  const deadlineOff = endDate ? dayOffset(endDate) : -1;
 
   // Background
   ctx.fillStyle = C.bg; ctx.fillRect(0,0,W,H);
 
-  // Header
-  for (let i=0; i<days; i++) {
-    const d    = addDays(baseDate,i);
-    const isWE = d.getDay()===0||d.getDay()===6;
-    const isTd = i===todayOff;
-    const x    = LABEL_W+i*cellW;
-    if (isWE) { ctx.fillStyle=C.alt;      ctx.fillRect(x,0,cellW,HEAD_H); }
-    if (isTd) { ctx.fillStyle=C.accentBg; ctx.fillRect(x,0,cellW,HEAD_H); }
-    if (i%7===0) {
-      ctx.font      = '11px system-ui,sans-serif';
-      ctx.fillStyle = isTd ? C.accent : C.muted;
-      ctx.fillText(fmtDate(d), x+2, HEAD_H/2+4);
+  // ── Month row ───────────────────────────────────────────────────────────
+  ctx.fillStyle = C.bg; ctx.fillRect(0,0,W,MONTH_H);
+
+  // Build month spans
+  const monthSpans = [];
+  for (let i = 0; i < days; i++) {
+    const d = addDays(baseDate, i);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    if (!monthSpans.length || monthSpans[monthSpans.length-1].key !== key) {
+      monthSpans.push({ key, label: d.toLocaleString('default', {month:'short', year:'numeric'}), start: i, count: 1 });
+    } else {
+      monthSpans[monthSpans.length-1].count++;
     }
-    ctx.strokeStyle=C.border; ctx.lineWidth=0.5;
-    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,HEAD_H); ctx.stroke();
   }
 
-  // Header label
-  ctx.font='500 11px system-ui,sans-serif'; ctx.fillStyle=C.muted;
-  ctx.fillText('Task', 28, HEAD_H/2+4);
+  ctx.font = '600 11px system-ui,sans-serif';
+  for (const ms of monthSpans) {
+    const x = LABEL_W + ms.start * cellW;
+    const w = ms.count * cellW;
+    ctx.fillStyle = C.secondary;
+    ctx.fillText(ms.label, x + 3, MONTH_H/2 + 4);
+    // right border per month
+    ctx.strokeStyle = C.border; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(x+w, 0); ctx.lineTo(x+w, MONTH_H); ctx.stroke();
+  }
 
-  // Header bottom border
+  // Month row bottom border (stronger)
+  ctx.strokeStyle = C.borderStrong; ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.moveTo(0, MONTH_H); ctx.lineTo(W, MONTH_H); ctx.stroke();
+
+  // Label column header
+  ctx.font = '500 12px system-ui,sans-serif'; ctx.fillStyle = C.secondary;
+  ctx.fillText('Task', 10, MONTH_H/2 + 4);
+
+  // ── Day row ─────────────────────────────────────────────────────────────
+  for (let i = 0; i < days; i++) {
+    const d    = addDays(baseDate, i);
+    const isWE = d.getDay()===0||d.getDay()===6;
+    const isTd = i===todayOff;
+    const isDead = i===deadlineOff;
+    const x    = LABEL_W + i*cellW;
+    const y    = MONTH_H;
+    if (isWE) { ctx.fillStyle=C.alt;      ctx.fillRect(x,y,cellW,DAY_H); }
+    if (isTd) { ctx.fillStyle=C.accentBg; ctx.fillRect(x,y,cellW,DAY_H); }
+    const show = cellW >= 22 ? i % 7 === 0 : i % 14 === 0;
+    if (show) {
+      ctx.font      = '11px system-ui,sans-serif';
+      ctx.fillStyle = isTd ? C.accent : C.muted;
+      ctx.textAlign = 'center';
+      ctx.fillText(String(d.getDate()), x + cellW/2, y + DAY_H/2 + 4);
+      ctx.textAlign = 'left';
+    }
+    if (isDead) {
+      ctx.strokeStyle='#e24b4a'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y+DAY_H); ctx.stroke();
+    }
+    ctx.strokeStyle=C.border; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y+DAY_H); ctx.stroke();
+  }
+
+  // Day row bottom border
   ctx.strokeStyle=C.border; ctx.lineWidth=0.5;
   ctx.beginPath(); ctx.moveTo(0,HEAD_H); ctx.lineTo(W,HEAD_H); ctx.stroke();
 
