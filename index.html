@@ -112,10 +112,25 @@
     .date-header {
       font-size: 11px; color: var(--text-muted);
       text-align: center;
-      padding: 6px 2px;
+      padding: 6px 0;
       border-bottom: 0.5px solid var(--border);
       border-right: 0.5px solid var(--border);
       white-space: nowrap;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .date-header span {
+      display: inline-block;
+      transform-origin: center center;
+    }
+
+    .date-header.has-label span {
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      line-height: 1;
+      max-height: 28px;
+      overflow: hidden;
     }
 
     .date-header.weekend  { background: var(--surface-alt); }
@@ -348,7 +363,13 @@ function fmtDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-function zoom(dir) { cellW=Math.min(60,Math.max(16,cellW+dir*6)); render(); autoSave(); }
+function zoom(dir) {
+  const container = document.getElementById('chartContainer');
+  const availW    = container.clientWidth - 160; // subtract label column
+  const minCellW  = days > 0 ? Math.max(4, Math.floor(availW / days)) : 4;
+  cellW = Math.min(60, Math.max(minCellW, cellW + dir * 6));
+  render(); autoSave();
+}
 
 // ── Render ─────────────────────────────────────────────────────────────
 function render() {
@@ -369,7 +390,8 @@ function render() {
     if (isWE)   cls += ' weekend';
     if (isTd)   cls += ' today-col';
     if (isDead) cls += ' deadline-col';
-    hHTML += `<th class="${cls}" style="width:${cellW}px;min-width:${cellW}px;">${show?fmtDate(d):''}</th>`;
+    if (show)   cls += ' has-label';
+    hHTML += `<th class="${cls}" style="width:${cellW}px;min-width:${cellW}px;">${show?`<span>${fmtDate(d)}</span>`:''}</th>`;
   }
   head.innerHTML = hHTML+'</tr>';
 
@@ -529,10 +551,55 @@ document.addEventListener('mousemove', e => {
   } else {
     task.dur=Math.max(1,Math.min(limit-origStart,origDur+delta));
   }
-  render();
+  updateBarInPlace(task);
 });
 
-document.addEventListener('mouseup', () => { if (dragState) { dragState=null; autoSave(); } });
+// Lightweight bar repositioning during drag — avoids full DOM rebuild and reflow jumps
+function updateBarInPlace(task) {
+  const barStart = Math.max(0, task.start);
+  const barEnd   = Math.min(days, task.start + task.dur);
+  const span     = barEnd - barStart;
+
+  // Move the bar element to the correct cell without rebuilding the whole table
+  const tbody = document.getElementById('ganttBody');
+  const row   = tbody.querySelector(`tr[data-id="${task.id}"]`);
+  if (!row) return;
+
+  // Remove existing bar
+  const existingBar = row.querySelector('.bar');
+  if (existingBar) existingBar.remove();
+
+  if (barStart < days && barEnd > 0 && span > 0) {
+    const startCell = row.cells[barStart + 1];
+    if (startCell) {
+      const bar = document.createElement('div');
+      bar.className  = 'bar';
+      bar.dataset.id = task.id;
+      bar.style.cssText = `background:${task.color};left:0;width:calc(${span*100}% + ${span-1}px);`;
+
+      const leftHandle = document.createElement('div');
+      leftHandle.className = 'resize-handle left';
+      leftHandle.dataset.id = task.id;
+      leftHandle.dataset.action = 'left';
+
+      const barLabel = document.createElement('span');
+      barLabel.className = 'bar-label';
+      barLabel.textContent = task.name;
+
+      const rightHandle = document.createElement('div');
+      rightHandle.className = 'resize-handle right';
+      rightHandle.dataset.id = task.id;
+      rightHandle.dataset.action = 'right';
+
+      bar.appendChild(leftHandle);
+      bar.appendChild(barLabel);
+      bar.appendChild(rightHandle);
+      startCell.appendChild(bar);
+    }
+  }
+}
+
+document.addEventListener('mouseup', () => { if (dragState) { dragState=null; render(); autoSave(); } });
 
 // ── Vertical row reorder (delegated) ──────────────────────────────────────
 let rowDrag = null;
