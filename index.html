@@ -270,9 +270,6 @@
     <button class="zoom-btn" onclick="zoom(1)"  title="Zoom in"><i class="ti ti-zoom-in"  aria-hidden="true"></i></button>
   </div>
   <div class="toolbar-group">
-    <button onclick="addTask()"><i class="ti ti-plus" aria-hidden="true"></i> Add task</button>
-  </div>
-  <div class="toolbar-group">
     <button onclick="downloadJSON()"><i class="ti ti-download" aria-hidden="true"></i> Save JSON</button>
     <button onclick="triggerLoad()"><i class="ti ti-folder-open" aria-hidden="true"></i> Load JSON</button>
     <input type="file" id="fileInput" accept=".json" style="display:none" />
@@ -351,7 +348,11 @@ document.getElementById('fileInput').addEventListener('change', e => {
 // ── Helpers ────────────────────────────────────────────────────────────
 function addDays(d,n) { const r=new Date(d); r.setDate(r.getDate()+n); return r; }
 function dayOffset(d) { return Math.round((d-baseDate)/86400000); }
-function fmtDate(d)   { return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
+function fmtDate(d) {
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
 function fmtISO(d)    { return d.toISOString().slice(0,10); }
 
 function zoom(dir) { cellW=Math.min(60,Math.max(16,cellW+dir*6)); render(); autoSave(); }
@@ -454,12 +455,9 @@ function render() {
 function renderTodayLine(todayOff) {
   const line = document.getElementById('todayLine');
   if (todayOff<0||todayOff>=days) { line.style.display='none'; return; }
-  const headerRow = document.getElementById('ganttHead').rows[0];
-  const cell      = headerRow?.cells[todayOff+1];
-  if (!cell) { line.style.display='none'; return; }
-  const tableRect = document.getElementById('ganttTable').getBoundingClientRect();
-  const cellRect  = cell.getBoundingClientRect();
-  const left      = cellRect.left - tableRect.left + cellRect.width/2;
+  // Position at the centre of the today column
+  // 160px label col + todayOff full columns + half a column
+  const left = 160 + todayOff*cellW + cellW/2;
   line.style.cssText = `display:block;position:absolute;top:0;bottom:0;left:${left}px;width:2px;background:var(--accent);opacity:0.6;pointer-events:none;z-index:10;`;
 }
 
@@ -468,13 +466,9 @@ function renderDeadlineLine() {
   const line = document.getElementById('deadlineLine');
   if (!endDate) { line.style.display='none'; return; }
   const deadlineOff = dayOffset(endDate);
-  if (deadlineOff<0||deadlineOff>=days) { line.style.display='none'; return; }
-  const headerRow = document.getElementById('ganttHead').rows[0];
-  const cell      = headerRow?.cells[deadlineOff+1];
-  if (!cell) { line.style.display='none'; return; }
-  const tableRect = document.getElementById('ganttTable').getBoundingClientRect();
-  const cellRect  = cell.getBoundingClientRect();
-  const left      = cellRect.left - tableRect.left + cellRect.width;
+  if (deadlineOff<0||deadlineOff>days) { line.style.display='none'; return; }
+  // Position at the right edge of the deadline column
+  const left = 160 + deadlineOff*cellW + cellW;
   line.style.cssText = `display:block;position:absolute;top:0;bottom:0;left:${left}px;width:2px;background:#e24b4a;opacity:0.75;pointer-events:none;z-index:10;`;
 }
 
