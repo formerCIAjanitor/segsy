@@ -307,10 +307,11 @@ let tasks = [
   { id:4, name:'Internship',     start:22, dur:6,  color:'#D85A30' },
   { id:5, name:'CR writeup', start:28, dur:3,  color:'#D4537E' },
 ];
-let nextId   = 6;
-let days     = 30;
+let nextId      = 6;
+let days        = 30;
 let defaultDays = 30;  // restored when end date is cleared
-let cellW    = 28;
+let cellW       = 28;
+let weekMode    = false;  // true = each column represents 7 days
 let baseDate = new Date(); baseDate.setHours(0,0,0,0);
 let endDate  = null;  // null = no deadline set
 
@@ -362,11 +363,37 @@ function fmtDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// Threshold below which day-mode columns become too narrow to be useful
+const DAY_MODE_MIN_CELL = 10;
+const WEEK_MODE_DEFAULT_CELL = 28;
+
 function zoom(dir) {
   const container = document.getElementById('chartContainer');
-  const availW    = container.clientWidth - 160; // subtract label column
-  const minCellW  = days > 0 ? Math.max(4, Math.floor(availW / days)) : 4;
-  cellW = Math.min(60, Math.max(minCellW, cellW + dir * 6));
+  const availW    = container.clientWidth - 160;
+
+  if (!weekMode) {
+    const cols    = days;
+    const minCell = cols > 0 ? Math.max(DAY_MODE_MIN_CELL, Math.floor(availW / cols)) : DAY_MODE_MIN_CELL;
+    const next    = cellW + dir * 6;
+    if (dir < 0 && next < DAY_MODE_MIN_CELL) {
+      // Switch to week mode
+      weekMode = true;
+      cellW    = WEEK_MODE_DEFAULT_CELL;
+    } else {
+      cellW = Math.min(60, Math.max(minCell, next));
+    }
+  } else {
+    const weeks   = Math.ceil(days / 7);
+    const minCell = weeks > 0 ? Math.max(8, Math.floor(availW / weeks)) : 8;
+    const next    = cellW + dir * 6;
+    if (dir > 0 && cellW >= WEEK_MODE_DEFAULT_CELL) {
+      // Switch back to day mode
+      weekMode = false;
+      cellW    = DAY_MODE_MIN_CELL + 4;
+    } else {
+      cellW = Math.min(60, Math.max(minCell, next));
+    }
+  }
   render(); autoSave();
 }
 
@@ -376,152 +403,277 @@ function render() {
   const todayOff    = dayOffset(today);
   const deadlineOff = endDate ? dayOffset(endDate) : -1;
 
-  // ── Header row 1: month spans ──────────────────────────────────────────
-  const head = document.getElementById('ganttHead');
+  // Monday anchor: find the Monday on or before baseDate
+  const baseDow        = baseDate.getDay(); // 0=Sun,1=Mon,...,6=Sat
+  const daysToMonday   = baseDow === 0 ? -6 : 1 - baseDow; // offset to prev/current Monday
+  // labelAnchor is the offset from day 0 of the first Monday label
+  // (may be negative if baseDate is not Monday, meaning first label is before the grid)
+  const mondayAnchor   = daysToMonday; // ≤ 0
 
-  // Build month spans: group consecutive days by month
-  const monthSpans = [];
-  for (let i = 0; i < days; i++) {
-    const d = addDays(baseDate, i);
-    const key = `${d.getFullYear()}-${d.getMonth()}`;
-    if (!monthSpans.length || monthSpans[monthSpans.length-1].key !== key) {
-      monthSpans.push({ key, label: d.toLocaleString('default', {month:'short', year:'numeric'}), count: 1 });
-    } else {
-      monthSpans[monthSpans.length-1].count++;
+  if (!weekMode) {
+    // ── DAY MODE ─────────────────────────────────────────────────────────
+
+    // Header row 1: month spans
+    const head = document.getElementById('ganttHead');
+    const monthSpans = [];
+    for (let i = 0; i < days; i++) {
+      const d   = addDays(baseDate, i);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (!monthSpans.length || monthSpans[monthSpans.length-1].key !== key)
+        monthSpans.push({ key, label: d.toLocaleString('default', {month:'short', year:'numeric'}), count: 1 });
+      else monthSpans[monthSpans.length-1].count++;
     }
-  }
+    let row1 = `<tr><th class="task-col month-header" style="text-align:left;padding:3px 10px;color:var(--text-secondary);font-size:12px;font-weight:500;">Task</th>`;
+    for (const ms of monthSpans) {
+      const w = ms.count * cellW;
+      row1 += `<th class="month-header" colspan="${ms.count}" style="min-width:${w}px;max-width:${w}px;"><span class="month-header-label">${ms.label}</span></th>`;
+    }
+    row1 += '</tr>';
 
-  let row1 = `<tr><th class="task-col month-header" style="text-align:left;padding:3px 10px;color:var(--text-secondary);font-size:12px;font-weight:500;">Task</th>`;
-  for (const ms of monthSpans) {
-    const w = ms.count * cellW;
-    row1 += `<th class="month-header" colspan="${ms.count}" style="min-width:${w}px;max-width:${w}px;"><span class="month-header-label">${ms.label}</span></th>`;
-  }
-  row1 += '</tr>';
-
-  // ── Header row 2: day numbers ───────────────────────────────────────────
-  let row2 = `<tr><th class="task-col date-header" style="border-right:0.5px solid var(--border-strong);"></th>`;
-  for (let i = 0; i < days; i++) {
-    const d      = addDays(baseDate, i);
-    const isWE   = d.getDay()===0||d.getDay()===6;
-    const isTd   = i===todayOff;
-    const isDead = i===deadlineOff;
-    // Show day number at week boundaries (every 7 or 14 days depending on zoom)
-    const show   = cellW >= 22 ? i % 7 === 0 : i % 14 === 0;
-    let cls = 'date-header';
-    if (isWE)   cls += ' weekend';
-    if (isTd)   cls += ' today-col';
-    if (isDead) cls += ' deadline-col';
-    row2 += `<th class="${cls}" style="width:${cellW}px;min-width:${cellW}px;">${show ? d.getDate() : ''}</th>`;
-  }
-  row2 += '</tr>';
-
-  head.innerHTML = row1 + row2;
-
-  // Body
-  const body = document.getElementById('ganttBody');
-  body.innerHTML = '';
-
-  tasks.forEach(task => {
-    const tr = document.createElement('tr');
-    tr.dataset.id = task.id;
-
-    const labelTd = document.createElement('td');
-    labelTd.className = 'task-label';
-
-    const handle = document.createElement('span');
-    handle.className = 'drag-handle';
-    handle.dataset.id = task.id;
-    handle.setAttribute('aria-label', 'Drag to reorder');
-    handle.innerHTML = '<i class="ti ti-grip-vertical"></i>';
-
-    const dot = document.createElement('div');
-    dot.className = 'color-dot';
-    dot.style.background = task.color;
-    dot.dataset.id = task.id;
-    dot.title = 'Change color';
-
-    const nameInput = document.createElement('input');
-    nameInput.value = task.name;
-    nameInput.dataset.id = task.id;
-    nameInput.title = 'Click to rename';
-
-    labelTd.appendChild(handle);
-    labelTd.appendChild(dot);
-    labelTd.appendChild(nameInput);
-    tr.appendChild(labelTd);
-
-    for (let i=0; i<days; i++) {
-      const d      = addDays(baseDate,i);
+    // Header row 2: day numbers, labelled on Mondays
+    let row2 = `<tr><th class="task-col date-header" style="border-right:0.5px solid var(--border-strong);"></th>`;
+    for (let i = 0; i < days; i++) {
+      const d      = addDays(baseDate, i);
       const isWE   = d.getDay()===0||d.getDay()===6;
       const isTd   = i===todayOff;
       const isDead = i===deadlineOff;
-      const td     = document.createElement('td');
-      let cls = 'cell';
+      // Show label on Mondays (or every other Monday when zoomed out)
+      const offsetFromMonday = i - mondayAnchor;
+      const show = cellW >= 22 ? offsetFromMonday % 7 === 0
+                               : offsetFromMonday % 14 === 0;
+      let cls = 'date-header';
       if (isWE)   cls += ' weekend';
       if (isTd)   cls += ' today-col';
       if (isDead) cls += ' deadline-col';
-      td.className = cls;
-      td.style.cssText = `width:${cellW}px;min-width:${cellW}px;`;
-      td.dataset.day    = i;
-      td.dataset.taskId = task.id;
-      tr.appendChild(td);
+      row2 += `<th class="${cls}" style="width:${cellW}px;min-width:${cellW}px;">${show && offsetFromMonday >= 0 ? d.getDate() : ''}</th>`;
     }
+    row2 += '</tr>';
+    head.innerHTML = row1 + row2;
 
-    body.appendChild(tr);
+    // Body: one cell per day
+    const body = document.getElementById('ganttBody');
+    body.innerHTML = '';
+    tasks.forEach(task => {
+      const tr = document.createElement('tr');
+      tr.dataset.id = task.id;
+      tr.appendChild(_makeLabelTd(task));
 
-    // Bar
-    const barStart = Math.max(0,task.start);
-    const barEnd   = Math.min(days,task.start+task.dur);
-    if (barStart<days && barEnd>0) {
-      const startCell = tr.cells[barStart+1];
-      if (startCell) {
-        const span = barEnd-barStart;
-        const bar  = document.createElement('div');
-        bar.className  = 'bar';
-        bar.dataset.id = task.id;
-        bar.style.cssText = `background:${task.color};left:0;width:calc(${span*100}% + ${span-1}px);`;
-        const leftHandle = document.createElement('div');
-        leftHandle.className = 'resize-handle left';
-        leftHandle.dataset.id = task.id;
-        leftHandle.dataset.action = 'left';
-
-        const barLabel = document.createElement('span');
-        barLabel.className = 'bar-label';
-        barLabel.textContent = task.name;
-
-        const rightHandle = document.createElement('div');
-        rightHandle.className = 'resize-handle right';
-        rightHandle.dataset.id = task.id;
-        rightHandle.dataset.action = 'right';
-
-        bar.appendChild(leftHandle);
-        bar.appendChild(barLabel);
-        bar.appendChild(rightHandle);
-        startCell.appendChild(bar);
+      for (let i = 0; i < days; i++) {
+        const d      = addDays(baseDate, i);
+        const isWE   = d.getDay()===0||d.getDay()===6;
+        const isTd   = i===todayOff;
+        const isDead = i===deadlineOff;
+        const td     = document.createElement('td');
+        let cls = 'cell';
+        if (isWE)   cls += ' weekend';
+        if (isTd)   cls += ' today-col';
+        if (isDead) cls += ' deadline-col';
+        td.className      = cls;
+        td.style.cssText  = `width:${cellW}px;min-width:${cellW}px;`;
+        td.dataset.day    = i;
+        td.dataset.taskId = task.id;
+        tr.appendChild(td);
       }
+      body.appendChild(tr);
+      _placeBar(tr, task, days, cellW);
+    });
+
+  } else {
+    // ── WEEK MODE ────────────────────────────────────────────────────────
+    // Each column = one ISO week (Mon–Sun). First column may be a partial week.
+
+    // Build week columns: each entry = { startDay (offset into range), count (days in this col) }
+    // First col starts at day 0, ends at the following Sunday (or end of range)
+    const weekCols = [];
+    let d0 = 0;
+    while (d0 < days) {
+      const date    = addDays(baseDate, d0);
+      const dow     = date.getDay(); // 0=Sun
+      // Days until next Monday (= end of this week-col)
+      const toMon   = dow === 1 ? 7 : dow === 0 ? 1 : 8 - dow;
+      const count   = Math.min(toMon, days - d0);
+      weekCols.push({ startDay: d0, count });
+      d0 += count;
     }
+    const numCols = weekCols.length;
 
-    // Rename
-    nameInput.addEventListener('change', e => {
-      const t=tasks.find(x=>x.id===+e.target.dataset.id);
-      if (t) { t.name=e.target.value; render(); autoSave(); }
-    });
+    // Header row 1: year/month spans across week columns
+    const head = document.getElementById('ganttHead');
+    // Group week columns by month of their Monday (start of col)
+    const monthSpans = [];
+    for (let ci = 0; ci < numCols; ci++) {
+      const d   = addDays(baseDate, weekCols[ci].startDay);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (!monthSpans.length || monthSpans[monthSpans.length-1].key !== key)
+        monthSpans.push({ key, label: d.toLocaleString('default', {month:'short', year:'numeric'}), colCount: 1 });
+      else monthSpans[monthSpans.length-1].colCount++;
+    }
+    let row1 = `<tr><th class="task-col month-header" style="text-align:left;padding:3px 10px;color:var(--text-secondary);font-size:12px;font-weight:500;">Task</th>`;
+    for (const ms of monthSpans) {
+      const w = ms.colCount * cellW;
+      row1 += `<th class="month-header" colspan="${ms.colCount}" style="min-width:${w}px;max-width:${w}px;"><span class="month-header-label">${ms.label}</span></th>`;
+    }
+    row1 += '</tr>';
 
-    // Color
-    dot.addEventListener('click', e => {
-      e.stopPropagation(); showColorPicker(task.id, e.currentTarget);
-    });
+    // Header row 2: week start date (Monday) for each column
+    let row2 = `<tr><th class="task-col date-header" style="border-right:0.5px solid var(--border-strong);"></th>`;
+    for (let ci = 0; ci < numCols; ci++) {
+      const wc     = weekCols[ci];
+      const d      = addDays(baseDate, wc.startDay);
+      // Find Monday of this week col
+      const monD   = addDays(baseDate, wc.startDay + (d.getDay()===1?0: d.getDay()===0?1:8-d.getDay()));
+      const isTd   = todayOff >= wc.startDay && todayOff < wc.startDay + wc.count;
+      const isDead = deadlineOff >= 0 && deadlineOff >= wc.startDay && deadlineOff < wc.startDay + wc.count;
+      let cls = 'date-header';
+      if (isTd)   cls += ' today-col';
+      if (isDead) cls += ' deadline-col';
+      // Show "D Mon" format e.g. "2 Jun"
+      const label = cellW >= 30
+        ? `${d.getDate()} ${d.toLocaleString('default',{month:'short'})}`
+        : d.getDate();
+      row2 += `<th class="${cls}" style="width:${cellW}px;min-width:${cellW}px;">${label}</th>`;
+    }
+    row2 += '</tr>';
+    head.innerHTML = row1 + row2;
 
-    // Delete
-    labelTd.addEventListener('contextmenu', e => {
-      e.preventDefault();
-      if (tasks.length>1 && confirm(`Delete "${task.name}"?`)) {
-        tasks=tasks.filter(x=>x.id!==task.id); render(); autoSave();
+    // Body: one cell per week column
+    const body = document.getElementById('ganttBody');
+    body.innerHTML = '';
+    tasks.forEach(task => {
+      const tr = document.createElement('tr');
+      tr.dataset.id = task.id;
+      tr.appendChild(_makeLabelTd(task));
+
+      for (let ci = 0; ci < numCols; ci++) {
+        const wc     = weekCols[ci];
+        const isTd   = todayOff >= wc.startDay && todayOff < wc.startDay + wc.count;
+        const isDead = deadlineOff >= 0 && deadlineOff >= wc.startDay && deadlineOff < wc.startDay + wc.count;
+        const td     = document.createElement('td');
+        let cls = 'cell';
+        if (isTd)   cls += ' today-col';
+        if (isDead) cls += ' deadline-col';
+        td.className      = cls;
+        td.style.cssText  = `width:${cellW}px;min-width:${cellW}px;`;
+        td.dataset.weekCol   = ci;
+        td.dataset.weekStart = wc.startDay;
+        td.dataset.weekCount = wc.count;
+        td.dataset.taskId    = task.id;
+        tr.appendChild(td);
       }
+      body.appendChild(tr);
+      _placeBarWeek(tr, task, weekCols, cellW, days);
     });
+  }
+}
+
+// ── Shared label-cell builder ───────────────────────────────────────────────
+function _makeLabelTd(task) {
+  const labelTd = document.createElement('td');
+  labelTd.className = 'task-label';
+
+  const handle = document.createElement('span');
+  handle.className = 'drag-handle';
+  handle.dataset.id = task.id;
+  handle.setAttribute('aria-label', 'Drag to reorder');
+  handle.innerHTML = '<i class="ti ti-grip-vertical"></i>';
+
+  const dot = document.createElement('div');
+  dot.className = 'color-dot';
+  dot.style.background = task.color;
+  dot.dataset.id = task.id;
+  dot.title = 'Change color';
+
+  const nameInput = document.createElement('input');
+  nameInput.value = task.name;
+  nameInput.dataset.id = task.id;
+  nameInput.title = 'Click to rename';
+
+  labelTd.appendChild(handle);
+  labelTd.appendChild(dot);
+  labelTd.appendChild(nameInput);
+
+  // Rename
+  nameInput.addEventListener('change', e => {
+    const t = tasks.find(x=>x.id===+e.target.dataset.id);
+    if (t) { t.name=e.target.value; render(); autoSave(); }
   });
+  // Color
+  dot.addEventListener('click', e => {
+    e.stopPropagation(); showColorPicker(task.id, e.currentTarget);
+  });
+  // Delete
+  labelTd.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    if (tasks.length>1 && confirm(`Delete "${task.name}"?`)) {
+      tasks=tasks.filter(x=>x.id!==task.id); render(); autoSave();
+    }
+  });
+  return labelTd;
+}
 
-  // (drag listeners are delegated — no per-render setup needed)
+// ── Bar placement helpers ───────────────────────────────────────────────────
+function _makeBar(task, spanCols, extraPx) {
+  const bar = document.createElement('div');
+  bar.className  = 'bar';
+  bar.dataset.id = task.id;
+  bar.style.cssText = `background:${task.color};left:0;width:calc(${spanCols*100}% + ${extraPx}px);`;
+  const lh = document.createElement('div');
+  lh.className='resize-handle left'; lh.dataset.id=task.id; lh.dataset.action='left';
+  const bl = document.createElement('span');
+  bl.className='bar-label'; bl.textContent=task.name;
+  const rh = document.createElement('div');
+  rh.className='resize-handle right'; rh.dataset.id=task.id; rh.dataset.action='right';
+  bar.appendChild(lh); bar.appendChild(bl); bar.appendChild(rh);
+  return bar;
+}
+
+function _placeBar(tr, task, totalDays, cw) {
+  const barStart = Math.max(0, task.start);
+  const barEnd   = Math.min(totalDays, task.start + task.dur);
+  if (barStart >= totalDays || barEnd <= 0) return;
+  const startCell = tr.cells[barStart + 1];
+  if (!startCell) return;
+  const span = barEnd - barStart;
+  startCell.appendChild(_makeBar(task, span, span - 1));
+}
+
+function _placeBarWeek(tr, task, weekCols, cw, totalDays) {
+  const barStart = Math.max(0, task.start);
+  const barEnd   = Math.min(totalDays, task.start + task.dur);
+  if (barStart >= totalDays || barEnd <= 0) return;
+
+  // Find which column the bar starts in, and the pixel offset within that col
+  let startCol = 0, startFrac = 0;
+  for (let ci = 0; ci < weekCols.length; ci++) {
+    const wc = weekCols[ci];
+    if (barStart < wc.startDay + wc.count) {
+      startCol  = ci;
+      startFrac = (barStart - wc.startDay) / wc.count; // 0..1
+      break;
+    }
+  }
+
+  // Width in fractional columns
+  const durCols = (barEnd - barStart) / 7;
+  // Approximate: left offset in px + width in px
+  const leftPx  = startFrac * cw;
+  const widthPx = durCols * cw - 1;
+
+  const startCell = tr.cells[startCol + 1];
+  if (!startCell) return;
+
+  const bar = document.createElement('div');
+  bar.className  = 'bar';
+  bar.dataset.id = task.id;
+  bar.style.cssText = `background:${task.color};left:${leftPx}px;width:${widthPx}px;`;
+  const lh = document.createElement('div');
+  lh.className='resize-handle left'; lh.dataset.id=task.id; lh.dataset.action='left';
+  const bl = document.createElement('span');
+  bl.className='bar-label'; bl.textContent=task.name;
+  const rh = document.createElement('div');
+  rh.className='resize-handle right'; rh.dataset.id=task.id; rh.dataset.action='right';
+  bar.appendChild(lh); bar.appendChild(bl); bar.appendChild(rh);
+  startCell.appendChild(bar);
 }
 
 // ── Bar drag & resize (delegated) ─────────────────────────────────────────
