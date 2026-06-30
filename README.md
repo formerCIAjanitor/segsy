@@ -1,10 +1,10 @@
-# Gantt Chart
+# SEGSY
 
 A lightweight, interactive Gantt chart editor that runs entirely in the browser.
 No installation, build tools or server are required.
 
 Many Gantt chart applications are overly complex and impractical for quickly creating simple project plans.
-This is why I built _Simple Elegant Gantt Solution for You 9000 Ultra Professional Platinum Edition Deluxe Community Edition Long-Term Support (*SEGSY 9000 UPPED CE LTS* or simply *SEGSY*)_, to have a simple way to create clean, readable Gantt charts.
+This is why I built _Simple Elegant Gantt Solution for You 9000 Ultra Professional Platinum Edition Deluxe Community Edition Long-Term Support (SEGSY 9000 UPPED CE LTS, or simply SEGSY)_, to have a simple way to create clean, readable Gantt charts.
 It is a single HTML file, works offline after the first load and stores data locally unless you explicitly export it.
 
 ![Gantt chart screenshot](./screenshot.png)
