@@ -4,7 +4,7 @@ A lightweight, interactive Gantt chart editor that runs entirely in the browser.
 No installation, build tools or server are required.
 
 Many Gantt chart applications are overly complex and impractical for quickly creating simple project plans.
-I built this because I wanted a simple way to create clean, readable Gantt charts without the complexity of full project management software.
+I built this because I wanted a simple way to create clean, readable Gantt charts.
 It consists of a single HTML file, works offline after the first load, and stores data locally unless you explicitly export it.
 
 ![Gantt chart screenshot](./screenshot.png)
@@ -18,7 +18,6 @@ It consists of a single HTML file, works offline after the first load, and store
 - **Delete tasks** — right-click a task label and confirm
 - **Color picker** — click the color dot next to a task name to change its color
 - **Zoom** — use the `+` / `−` buttons to widen or narrow the day columns
-- **View range** — switch between 2-week, 1-month, 2-month, and 3-month views
 - **Today marker** — a vertical line marks today's date across the full chart
 - **Dark mode** — automatically follows your system preference
 
