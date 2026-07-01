@@ -340,7 +340,7 @@
 
 <div class="chart-container" id="chartContainer">
   <div class="table-wrap" id="tableWrap">
-    <table id="ganttTable">
+    <table id="ganttTable" style="table-layout:fixed;">
       <thead id="ganttHead"></thead>
       <tbody id="ganttBody"></tbody>
     </table>
@@ -595,7 +595,8 @@ function render() {
       const label = cellW >= WEEK_MODE_DEFAULT_CELL
         ? `${d.getDate()} ${d.toLocaleString('default',{month:'short'})}`
         : d.getDate();
-      row2 += `<th class="${cls}" style="width:${cellW}px;min-width:${cellW}px;">${label}</th>`;
+      const wColW = Math.round(cellW * wc.count / wc.fullSpan);
+      row2 += `<th class="${cls}" style="width:${wColW}px;min-width:${wColW}px;">${label}</th>`;
     }
     row2 += '</tr>';
     head.innerHTML = row1 + row2;
@@ -615,7 +616,8 @@ function render() {
         let cls = 'cell';
         if (isTd)   cls += ' today-col';
         td.className      = cls;
-        td.style.cssText  = `width:${cellW}px;min-width:${cellW}px;`;
+        const wColW2 = Math.round(cellW * wc.count / wc.fullSpan);
+        td.style.cssText  = `width:${wColW2}px;min-width:${wColW2}px;`;
         td.dataset.weekCol   = ci;
         td.dataset.weekStart = wc.startDay;
         td.dataset.weekCount = wc.count;
@@ -659,7 +661,8 @@ function render() {
       let cls = 'date-header';
       if (isTd) cls += ' today-col';
       const label = d.toLocaleString('default', {month:'short'});
-      row2 += `<th class="${cls}" style="width:${cellW}px;min-width:${cellW}px;">${label}</th>`;
+      const mColW = Math.round(cellW * mc.count / mc.fullSpan);
+      row2 += `<th class="${cls}" style="width:${mColW}px;min-width:${mColW}px;">${label}</th>`;
     }
     row2 += '</tr>';
     head.innerHTML = row1 + row2;
@@ -679,7 +682,8 @@ function render() {
         let cls = 'cell';
         if (isTd) cls += ' today-col';
         td.className      = cls;
-        td.style.cssText  = `width:${cellW}px;min-width:${cellW}px;`;
+        const mColW2 = Math.round(cellW * mc.count / mc.fullSpan);
+        td.style.cssText  = `width:${mColW2}px;min-width:${mColW2}px;`;
         td.dataset.monthCol   = ci;
         td.dataset.monthStart = mc.startDay;
         td.dataset.monthCount = mc.count;
@@ -706,44 +710,55 @@ function updateEndLine() {
     return;
   }
 
-  const LABEL_W = 160;
+  // Use actual DOM positions — sub-pixel rounding across many columns makes
+  // calculated geometry (days * cellW) drift significantly. Measuring the
+  // rendered th elements is always pixel-accurate.
+  const wrap     = document.querySelector('.table-wrap');
+  const wrapLeft = wrap.getBoundingClientRect().left;
+  const ths      = document.querySelectorAll('#ganttTable thead tr:last-child th');
+  // ths[0] = label column; ths[1..n] = one th per day/week/month data column
+
+  if (ths.length < 2) return;
+  const tableRightPx = ths[ths.length - 1].getBoundingClientRect().right - wrapLeft;
+
   let leftPx;
 
   if (!weekMode && !monthMode) {
-    // Day mode: each column is one day, end date is the right edge of the last day column
-    leftPx = LABEL_W + days * cellW;
+    // Day mode: ths[days] is the last included day column (data cols are 1-indexed).
+    const endTh = ths[days];
+    if (!endTh) return;
+    leftPx = endTh.getBoundingClientRect().right - wrapLeft;
   } else {
-    const cols = monthMode ? getMonthCols() : getWeekCols();
-    let px = LABEL_W;
+    // Week/month mode: find the column containing the end date, interpolate within it.
+    const cols       = monthMode ? getMonthCols() : getWeekCols();
+    const getFullSpan = (c) => monthMode ? c.daysInMonth : 7;
+    leftPx = tableRightPx; // fallback: line at right edge
     for (let ci = 0; ci < cols.length; ci++) {
-      const c = cols[ci];
+      const c  = cols[ci];
+      const th = ths[ci + 1];
+      if (!th) break;
       if (days - 1 < c.startDay + c.count) {
-        // days - 1 is the last included day. Position the line at its right
-        // edge, i.e. after (days - c.startDay) days into this column.
-        // Use daysInMonth (the full calendar span of this column) as the
-        // denominator so the fraction reflects true position within the column.
-        const daysUsed   = days - c.startDay;
-        const colSpan    = monthMode ? c.daysInMonth : c.count; // actual days in this column
-        px += (daysUsed / colSpan) * cellW;
+        const rect     = th.getBoundingClientRect();
+        const thLeft   = rect.left - wrapLeft;
+        const thWidth  = rect.width;
+        const daysUsed = days - c.startDay;
+        leftPx = thLeft + (daysUsed / getFullSpan(c)) * thWidth;
         break;
       }
-      px += cellW;
     }
-    leftPx = px;
   }
 
   line.style.display = 'block';
   line.style.left    = leftPx + 'px';
 
-  // Dead zone: shade the area to the right of the end line
   const zone = document.getElementById('endZone');
   if (zone) {
-    const tableWidth = document.getElementById('ganttTable').offsetWidth;
-    const zoneWidth  = tableWidth - leftPx;
-    if (zoneWidth > 0) {
+    const zoneWidth = tableRightPx - leftPx;
+    if (zoneWidth > 1) {
       zone.style.display = 'block';
       zone.style.left    = leftPx + 'px';
       zone.style.width   = zoneWidth + 'px';
+      zone.style.right   = '';
     } else {
       zone.style.display = 'none';
     }
@@ -834,7 +849,7 @@ function _placeBarCols(tr, task, cols, cw, totalDays) {
     const c = cols[ci];
     if (barStart < c.startDay + c.count) {
       startCol  = ci;
-      startFrac = (barStart - c.startDay) / c.count; // 0..1, using THIS column's own day count
+      startFrac = (barStart - c.startDay) / c.fullSpan; // 0..1, proportional to full column span
       break;
     }
   }
@@ -848,7 +863,7 @@ function _placeBarCols(tr, task, cols, cw, totalDays) {
     const c = cols[ci];
     const colStartOffset = ci === startCol ? (barStart - c.startDay) : 0;
     const daysInColUsed  = Math.min(c.count - colStartOffset, remaining);
-    widthPx   += (daysInColUsed / c.count) * cw;
+    widthPx   += (daysInColUsed / c.fullSpan) * cw;
     remaining -= daysInColUsed;
   }
 
@@ -979,9 +994,12 @@ function getWeekCols() {
     const date  = addDays(baseDate, d0);
     const dow   = date.getDay();
     const toMon = dow === 1 ? 7 : dow === 0 ? 1 : 8 - dow;
-    const count = Math.min(toMon, days - d0);
-    weekCols.push({ startDay: d0, count });
-    d0 += count;
+    const isLast = d0 + toMon >= days;
+    // When an end date is set and this is the last column, let it extend to
+    // the end of the full week so the grey zone is visible after the red line.
+    const count = (endDate && isLast) ? toMon : Math.min(toMon, days - d0);
+    weekCols.push({ startDay: d0, count, fullSpan: 7 });
+    d0 += Math.min(toMon, days - d0); // always advance by clipped amount
   }
   return weekCols;
 }
@@ -999,9 +1017,13 @@ function getMonthCols() {
     const daysInMo = new Date(y, m + 1, 0).getDate(); // days in this calendar month
     const dayOfMo  = date.getDate(); // 1-based
     const toEndOfMo = daysInMo - dayOfMo + 1; // days remaining incl. today
-    const count    = Math.min(toEndOfMo, days - d0);
-    monthCols.push({ startDay: d0, count, daysInMonth: daysInMo });
-    d0 += count;
+    const clipped  = Math.min(toEndOfMo, days - d0);
+    const isLast   = d0 + clipped >= days;
+    // When an end date is set and this is the last column, extend to end of
+    // full calendar month so the grey zone after the red line is visible.
+    const count    = (endDate && isLast) ? toEndOfMo : clipped;
+    monthCols.push({ startDay: d0, count, daysInMonth: daysInMo, fullSpan: daysInMo });
+    d0 += clipped; // always advance by clipped amount to reach next month
   }
   return monthCols;
 }

@@ -64,6 +64,7 @@ Saved charts are plain JSON, making them easy to read, edit by hand, or track in
 
 - SpaceX (Planning Division)
 - Procter & Gamble
+- Jackie Moon
 - The Government of Paraguay
 - The Czech Institute of Paleontology and Botany
 - Michel from Bordeaux
