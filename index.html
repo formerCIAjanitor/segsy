@@ -143,6 +143,18 @@
       border-right: 0.5px solid var(--border);
       white-space: nowrap;
       overflow: hidden;
+      position: relative;
+    }
+
+    /* Portion of a fixed-width week/month column that falls outside the
+       configured date range (before the start date or after the end date). */
+    .col-muted {
+      position: absolute; top: 0; bottom: 0;
+      background-color: var(--bg);
+      opacity: 0.6;
+      background-image: repeating-linear-gradient(45deg, var(--border-strong) 0, var(--border-strong) 1px, transparent 1px, transparent 6px);
+      pointer-events: none;
+      z-index: 1;
     }
 
     .month-header {
@@ -396,12 +408,14 @@ function applyStartDate(val) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) return;
   baseDate = new Date(val + 'T00:00:00');
   if (endDate) { const c = dayOffset(endDate) + 1; if (c > 0) days = c; }
+  cellW = computeCellW(currentMode());
   render(); autoSave();
 }
 function applyEndDate(val) {
   endDate = val ? new Date(val + 'T00:00:00') : null;
   if (endDate) { const c = dayOffset(endDate) + 1; if (c > 0) days = c; }
   else days = defaultDays;
+  cellW = computeCellW(currentMode());
   render(); autoSave();
 }
 
@@ -445,35 +459,74 @@ function fmtDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-// Threshold below which day-mode columns become too narrow to be useful
-const DAY_MODE_MIN_CELL       = 10;
-const DAY_MODE_DEFAULT_CELL   = 28;
-const WEEK_MODE_DEFAULT_CELL  = 28;
-const MONTH_MODE_DEFAULT_CELL = 36;
-const MONTH_MODE_MIN_CELL     = 8;
-const CELL_MAX = 60;
+const CELL_MAX  = 60;   // never grow a column wider than this even if the container is huge
+const LABEL_PAD = 14;   // horizontal padding added around the widest label, in px
+const LABEL_W   = 160;  // fixed width of the task-name column (matches .task-col CSS)
+
+// ── Label width measurement ───────────────────────────────────────────────
+// A column must always be at least as wide as its widest possible label.
+// We measure with a scratch canvas so this works before anything is painted
+// and stays exact regardless of what's currently on screen.
+const _measureCanvas = document.createElement('canvas');
+const _measureCtx    = _measureCanvas.getContext('2d');
+function measureTextWidth(text, font) {
+  _measureCtx.font = font;
+  return _measureCtx.measureText(text).width;
+}
+
+const DATE_HEADER_FONT = '11px system-ui, -apple-system, "Segoe UI", sans-serif';
+
+// Widest label a given view mode will ever need to render in a single column.
+function labelMinWidth(mode) {
+  if (mode === 'day') {
+    // Day mode only labels Mondays with the day-of-month number (1–31).
+    return measureTextWidth('30', DATE_HEADER_FONT) + LABEL_PAD;
+  }
+  if (mode === 'week') {
+    // "D Mon" e.g. "2 Jun" .. "31 Dec" — check every month name at 2-digit width.
+    let max = 0;
+    for (let m = 0; m < 12; m++) {
+      const label = `31 ${new Date(2000, m, 1).toLocaleString('default', {month:'short'})}`;
+      max = Math.max(max, measureTextWidth(label, DATE_HEADER_FONT));
+    }
+    return max + LABEL_PAD;
+  }
+  // month mode: short month name, e.g. "Sep"
+  let max = 0;
+  for (let m = 0; m < 12; m++) {
+    const label = new Date(2000, m, 1).toLocaleString('default', {month:'short'});
+    max = Math.max(max, measureTextWidth(label, DATE_HEADER_FONT));
+  }
+  return max + LABEL_PAD;
+}
+
+// Number of data columns a mode currently needs, used only to decide how much
+// of the available container width each fixed column is allowed to soak up.
+function numColsFor(mode) {
+  if (mode === 'day')   return days;
+  if (mode === 'week')  return getWeekCols().length;
+  return getMonthCols().length;
+}
+
+// The single source of truth for column width: never narrower than the
+// widest label, never wider than CELL_MAX, otherwise stretched to fill
+// the container. Every column in a given mode is exactly this width —
+// there is no per-column scaling anywhere else in the app.
+function computeCellW(mode) {
+  const container = document.getElementById('chartContainer');
+  const availW    = Math.max(0, container.clientWidth - LABEL_W);
+  const n         = numColsFor(mode);
+  const fitCell   = n > 0 ? Math.floor(availW / n) : 0;
+  const minCell   = labelMinWidth(mode);
+  return Math.min(CELL_MAX, Math.max(minCell, fitCell));
+}
+
+function currentMode() { return monthMode ? 'month' : weekMode ? 'week' : 'day'; }
 
 function setView(mode) {
-  const container = document.getElementById('chartContainer');
-  const availW    = container.clientWidth - 160;
-
-  weekMode  = false;
-  monthMode = false;
-
-  if (mode === 'day') {
-    const fitCell = days > 0 ? Math.floor(availW / days) : DAY_MODE_DEFAULT_CELL;
-    cellW = Math.min(CELL_MAX, Math.max(DAY_MODE_MIN_CELL, fitCell));
-  } else if (mode === 'week') {
-    weekMode      = true;
-    const weeks   = Math.ceil(days / 7);
-    const fitCell = weeks > 0 ? Math.floor(availW / weeks) : WEEK_MODE_DEFAULT_CELL;
-    cellW = Math.min(CELL_MAX, Math.max(WEEK_MODE_DEFAULT_CELL, fitCell));
-  } else {
-    monthMode     = true;
-    const months  = getMonthCols().length;
-    const fitCell = months > 0 ? Math.floor(availW / months) : MONTH_MODE_DEFAULT_CELL;
-    cellW = Math.min(CELL_MAX, Math.max(MONTH_MODE_DEFAULT_CELL, fitCell));
-  }
+  weekMode  = mode === 'week';
+  monthMode = mode === 'month';
+  cellW = computeCellW(mode);
 
   document.getElementById('btnDay').classList.toggle('active',   mode === 'day');
   document.getElementById('btnWeek').classList.toggle('active',  mode === 'week');
@@ -482,8 +535,38 @@ function setView(mode) {
   render(); autoSave();
 }
 
+// Recompute the fixed column width for the active view when the window
+// resizes (columns stay uniform; they just grow/shrink together).
+let _resizeRAF = null;
+window.addEventListener('resize', () => {
+  if (_resizeRAF) cancelAnimationFrame(_resizeRAF);
+  _resizeRAF = requestAnimationFrame(() => {
+    cellW = computeCellW(currentMode());
+    render();
+  });
+});
+
 
 // ── Render ─────────────────────────────────────────────────────────────
+// Returns HTML for the muted overlay covering the portion of a fixed-width
+// week/month column that falls outside [0, days) — i.e. before baseDate or
+// after the configured end date. Every column is rendered at the same
+// `cellW`, so this is purely cosmetic and never affects layout math.
+function _mutedOverlayHTML(c) {
+  let html = '';
+  const leadDays = Math.max(0, Math.min(c.fullSpan, -c.startDay));
+  if (leadDays > 0) {
+    const w = (leadDays / c.fullSpan) * cellW;
+    html += `<div class="col-muted" style="left:0;width:${w}px;"></div>`;
+  }
+  const trailDays = Math.max(0, (c.startDay + c.fullSpan) - days);
+  if (trailDays > 0) {
+    const w = (Math.min(trailDays, c.fullSpan) / c.fullSpan) * cellW;
+    html += `<div class="col-muted" style="right:0;width:${w}px;"></div>`;
+  }
+  return html;
+}
+
 function render() {
   const today       = new Date(); today.setHours(0,0,0,0);
   const todayOff    = dayOffset(today);
@@ -497,6 +580,7 @@ function render() {
 
   if (!weekMode && !monthMode) {
     // ── DAY MODE ─────────────────────────────────────────────────────────
+    // Every column is exactly one day and exactly `cellW` wide — no scaling.
 
     // Header row 1: month spans
     const head = document.getElementById('ganttHead');
@@ -515,20 +599,18 @@ function render() {
     }
     row1 += '</tr>';
 
-    // Header row 2: day numbers, labelled on Mondays
+    // Header row 2: day numbers, labelled on Mondays only (deliberately sparse)
     let row2 = `<tr><th class="task-col date-header" style="border-right:0.5px solid var(--border-strong);"></th>`;
     for (let i = 0; i < days; i++) {
       const d      = addDays(baseDate, i);
       const isWE   = d.getDay()===0||d.getDay()===6;
       const isTd   = i===todayOff;
-      // Show label on Mondays (or every other Monday when zoomed out)
       const offsetFromMonday = i - mondayAnchor;
-      const show = cellW >= 22 ? offsetFromMonday % 7 === 0
-                               : offsetFromMonday % 14 === 0;
+      const show = offsetFromMonday % 7 === 0;
       let cls = 'date-header';
       if (isWE)   cls += ' weekend';
       if (isTd)   cls += ' today-col';
-      row2 += `<th class="${cls}" style="width:${cellW}px;min-width:${cellW}px;">${show && offsetFromMonday >= 0 ? d.getDate() : ''}</th>`;
+      row2 += `<th class="${cls}" style="width:${cellW}px;min-width:${cellW}px;">${show ? d.getDate() : ''}</th>`;
     }
     row2 += '</tr>';
     head.innerHTML = row1 + row2;
@@ -556,118 +638,52 @@ function render() {
         tr.appendChild(td);
       }
       body.appendChild(tr);
-      _placeBar(tr, task, days, cellW);
-    });
-
-  } else if (weekMode) {
-    // ── WEEK MODE ────────────────────────────────────────────────────────
-    // Each column = one ISO week (Mon–Sun). First column may be a partial week.
-    const weekCols = getWeekCols();
-    const numCols = weekCols.length;
-
-    // Header row 1: year/month spans across week columns
-    const head = document.getElementById('ganttHead');
-    // Group week columns by month of their Monday (start of col)
-    const monthSpans = [];
-    for (let ci = 0; ci < numCols; ci++) {
-      const d   = addDays(baseDate, weekCols[ci].startDay);
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
-      if (!monthSpans.length || monthSpans[monthSpans.length-1].key !== key)
-        monthSpans.push({ key, label: d.toLocaleString('default', {month:'short', year:'numeric'}), colCount: 1 });
-      else monthSpans[monthSpans.length-1].colCount++;
-    }
-    let row1 = `<tr><th class="task-col month-header" style="text-align:left;padding:3px 10px;color:var(--text-secondary);font-size:12px;font-weight:500;">Task</th>`;
-    for (const ms of monthSpans) {
-      const w = ms.colCount * cellW;
-      row1 += `<th class="month-header" colspan="${ms.colCount}" style="min-width:${w}px;max-width:${w}px;"><span class="month-header-label">${ms.label}</span></th>`;
-    }
-    row1 += '</tr>';
-
-    // Header row 2: week start date (Monday) for each column
-    let row2 = `<tr><th class="task-col date-header" style="border-right:0.5px solid var(--border-strong);"></th>`;
-    for (let ci = 0; ci < numCols; ci++) {
-      const wc     = weekCols[ci];
-      const d      = addDays(baseDate, wc.startDay);
-      const isTd   = todayOff >= wc.startDay && todayOff < wc.startDay + wc.count;
-      let cls = 'date-header';
-      if (isTd)   cls += ' today-col';
-      // Show "D Mon" format e.g. "2 Jun"
-      const label = cellW >= WEEK_MODE_DEFAULT_CELL
-        ? `${d.getDate()} ${d.toLocaleString('default',{month:'short'})}`
-        : d.getDate();
-      const wColW = Math.round(cellW * wc.count / wc.fullSpan);
-      row2 += `<th class="${cls}" style="width:${wColW}px;min-width:${wColW}px;">${label}</th>`;
-    }
-    row2 += '</tr>';
-    head.innerHTML = row1 + row2;
-
-    // Body: one cell per week column
-    const body = document.getElementById('ganttBody');
-    body.innerHTML = '';
-    tasks.forEach(task => {
-      const tr = document.createElement('tr');
-      tr.dataset.id = task.id;
-      tr.appendChild(_makeLabelTd(task));
-
-      for (let ci = 0; ci < numCols; ci++) {
-        const wc     = weekCols[ci];
-        const isTd   = todayOff >= wc.startDay && todayOff < wc.startDay + wc.count;
-        const td     = document.createElement('td');
-        let cls = 'cell';
-        if (isTd)   cls += ' today-col';
-        td.className      = cls;
-        const wColW2 = Math.round(cellW * wc.count / wc.fullSpan);
-        td.style.cssText  = `width:${wColW2}px;min-width:${wColW2}px;`;
-        td.dataset.weekCol   = ci;
-        td.dataset.weekStart = wc.startDay;
-        td.dataset.weekCount = wc.count;
-        td.dataset.taskId    = task.id;
-        tr.appendChild(td);
-      }
-      body.appendChild(tr);
-      _placeBarCols(tr, task, weekCols, cellW, days);
+      _placeBarUnified(tr, task, days);
     });
 
   } else {
-    // ── MONTH MODE ───────────────────────────────────────────────────────
-    // Each column = one calendar month. First/last columns may be partial.
-    const monthCols = getMonthCols();
-    const numCols   = monthCols.length;
+    // ── WEEK / MONTH MODE ─────────────────────────────────────────────────
+    // Every column is a full calendar week or month and exactly `cellW`
+    // wide. Columns at the edges may extend before day 0 or past `days`;
+    // that portion is rendered muted rather than shrinking the column.
+    const cols    = monthMode ? getMonthCols() : getWeekCols();
+    const numCols = cols.length;
 
-    // Header row 1: year spans across month columns (groups consecutive
-    // columns that share the same year)
+    // Header row 1: group columns by month (week mode) or year (month mode)
     const head = document.getElementById('ganttHead');
-    const yearSpans = [];
+    const groupSpans = [];
     for (let ci = 0; ci < numCols; ci++) {
-      const d   = addDays(baseDate, monthCols[ci].startDay);
-      const key = `${d.getFullYear()}`;
-      if (!yearSpans.length || yearSpans[yearSpans.length-1].key !== key)
-        yearSpans.push({ key, label: key, colCount: 1 });
-      else yearSpans[yearSpans.length-1].colCount++;
+      const d   = addDays(baseDate, cols[ci].startDay);
+      const key = monthMode ? `${d.getFullYear()}` : `${d.getFullYear()}-${d.getMonth()}`;
+      const label = monthMode ? `${d.getFullYear()}` : d.toLocaleString('default', {month:'short', year:'numeric'});
+      if (!groupSpans.length || groupSpans[groupSpans.length-1].key !== key)
+        groupSpans.push({ key, label, colCount: 1 });
+      else groupSpans[groupSpans.length-1].colCount++;
     }
     let row1 = `<tr><th class="task-col month-header" style="text-align:left;padding:3px 10px;color:var(--text-secondary);font-size:12px;font-weight:500;">Task</th>`;
-    for (const ys of yearSpans) {
-      const w = ys.colCount * cellW;
-      row1 += `<th class="month-header" colspan="${ys.colCount}" style="min-width:${w}px;max-width:${w}px;"><span class="month-header-label">${ys.label}</span></th>`;
+    for (const gs of groupSpans) {
+      const w = gs.colCount * cellW;
+      row1 += `<th class="month-header" colspan="${gs.colCount}" style="min-width:${w}px;max-width:${w}px;"><span class="month-header-label">${gs.label}</span></th>`;
     }
     row1 += '</tr>';
 
-    // Header row 2: month name for each column, e.g. "Jun"
+    // Header row 2: week-start date ("D Mon") or month name ("Jun")
     let row2 = `<tr><th class="task-col date-header" style="border-right:0.5px solid var(--border-strong);"></th>`;
     for (let ci = 0; ci < numCols; ci++) {
-      const mc   = monthCols[ci];
-      const d    = addDays(baseDate, mc.startDay);
-      const isTd = todayOff >= mc.startDay && todayOff < mc.startDay + mc.count;
+      const c    = cols[ci];
+      const d    = addDays(baseDate, c.startDay);
+      const isTd = todayOff >= c.startDay && todayOff < c.startDay + c.fullSpan;
       let cls = 'date-header';
       if (isTd) cls += ' today-col';
-      const label = d.toLocaleString('default', {month:'short'});
-      const mColW = Math.round(cellW * mc.count / mc.fullSpan);
-      row2 += `<th class="${cls}" style="width:${mColW}px;min-width:${mColW}px;">${label}</th>`;
+      const label = monthMode
+        ? d.toLocaleString('default', {month:'short'})
+        : `${d.getDate()} ${d.toLocaleString('default',{month:'short'})}`;
+      row2 += `<th class="${cls}" style="width:${cellW}px;min-width:${cellW}px;">${label}${_mutedOverlayHTML(c)}</th>`;
     }
     row2 += '</tr>';
     head.innerHTML = row1 + row2;
 
-    // Body: one cell per month column
+    // Body: one cell per column
     const body = document.getElementById('ganttBody');
     body.innerHTML = '';
     tasks.forEach(task => {
@@ -676,31 +692,28 @@ function render() {
       tr.appendChild(_makeLabelTd(task));
 
       for (let ci = 0; ci < numCols; ci++) {
-        const mc   = monthCols[ci];
-        const isTd = todayOff >= mc.startDay && todayOff < mc.startDay + mc.count;
+        const c    = cols[ci];
+        const isTd = todayOff >= c.startDay && todayOff < c.startDay + c.fullSpan;
         const td   = document.createElement('td');
         let cls = 'cell';
         if (isTd) cls += ' today-col';
-        td.className      = cls;
-        const mColW2 = Math.round(cellW * mc.count / mc.fullSpan);
-        td.style.cssText  = `width:${mColW2}px;min-width:${mColW2}px;`;
-        td.dataset.monthCol   = ci;
-        td.dataset.monthStart = mc.startDay;
-        td.dataset.monthCount = mc.count;
-        td.dataset.taskId     = task.id;
+        td.className     = cls;
+        td.style.cssText = `width:${cellW}px;min-width:${cellW}px;`;
+        td.dataset.taskId = task.id;
+        td.insertAdjacentHTML('beforeend', _mutedOverlayHTML(c));
         tr.appendChild(td);
       }
       body.appendChild(tr);
-      _placeBarCols(tr, task, monthCols, cellW, days);
+      _placeBarUnified(tr, task, days);
     });
   }
   updateEndLine();
 }
 
 // ── End-date boundary line ──────────────────────────────────────────────────
-// Draws a pixel-precise red vertical line at the end-date boundary.
-// Works in all three modes; in month mode this correctly falls mid-column
-// when the end date isn't the last day of a month.
+// Draws a pixel-precise red vertical line at the end-date boundary, computed
+// directly from dayToX — the same function that positions every column and
+// bar — so it can never drift out of sync with what's on screen.
 function updateEndLine() {
   const line = document.getElementById('endLine');
   if (!line || !endDate) {
@@ -710,43 +723,9 @@ function updateEndLine() {
     return;
   }
 
-  // Use actual DOM positions — sub-pixel rounding across many columns makes
-  // calculated geometry (days * cellW) drift significantly. Measuring the
-  // rendered th elements is always pixel-accurate.
-  const wrap     = document.querySelector('.table-wrap');
-  const wrapLeft = wrap.getBoundingClientRect().left;
-  const ths      = document.querySelectorAll('#ganttTable thead tr:last-child th');
-  // ths[0] = label column; ths[1..n] = one th per day/week/month data column
-
-  if (ths.length < 2) return;
-  const tableRightPx = ths[ths.length - 1].getBoundingClientRect().right - wrapLeft;
-
-  let leftPx;
-
-  if (!weekMode && !monthMode) {
-    // Day mode: ths[days] is the last included day column (data cols are 1-indexed).
-    const endTh = ths[days];
-    if (!endTh) return;
-    leftPx = endTh.getBoundingClientRect().right - wrapLeft;
-  } else {
-    // Week/month mode: find the column containing the end date, interpolate within it.
-    const cols       = monthMode ? getMonthCols() : getWeekCols();
-    const getFullSpan = (c) => monthMode ? c.daysInMonth : 7;
-    leftPx = tableRightPx; // fallback: line at right edge
-    for (let ci = 0; ci < cols.length; ci++) {
-      const c  = cols[ci];
-      const th = ths[ci + 1];
-      if (!th) break;
-      if (days - 1 < c.startDay + c.count) {
-        const rect     = th.getBoundingClientRect();
-        const thLeft   = rect.left - wrapLeft;
-        const thWidth  = rect.width;
-        const daysUsed = days - c.startDay;
-        leftPx = thLeft + (daysUsed / getFullSpan(c)) * thWidth;
-        break;
-      }
-    }
-  }
+  const numCols = monthMode ? getMonthCols().length : weekMode ? getWeekCols().length : days;
+  const tableRightPx = LABEL_W + numCols * cellW;
+  const leftPx = LABEL_W + dayToX(days);
 
   line.style.display = 'block';
   line.style.left    = leftPx + 'px';
@@ -824,55 +803,26 @@ function _makeBar(task, spanCols, extraPx) {
   return bar;
 }
 
-function _placeBar(tr, task, totalDays, cw) {
-  const barStart = Math.max(0, task.start);
-  const barEnd   = Math.min(totalDays, task.start + task.dur);
-  if (barStart >= totalDays || barEnd <= 0) return;
-  const startCell = tr.cells[barStart + 1];
-  if (!startCell) return;
-  const span = barEnd - barStart;
-  // +span-1 compensates for 0.5px inter-cell borders accumulated across spans.
-  // When the bar ends exactly at the grid boundary there's no right-side border
-  // to compensate for, so omit the extra pixels to prevent overflow.
-  const extraPx = barEnd < totalDays ? span - 1 : 0;
-  startCell.appendChild(_makeBar(task, span, extraPx));
-}
-
-function _placeBarCols(tr, task, cols, cw, totalDays) {
+// Unified bar placement for all three view modes. Bar edges are found with
+// dayToX (the same function that positions every header/cell), so a bar's
+// pixels always agree exactly with the columns it's drawn on top of —
+// there is no separate/duplicated geometry to drift out of sync.
+function _placeBarUnified(tr, task, totalDays) {
   const barStart = Math.max(0, task.start);
   const barEnd   = Math.min(totalDays, task.start + task.dur);
   if (barStart >= totalDays || barEnd <= 0) return;
 
-  // Find the column containing barStart, and the fractional offset within it.
-  let startCol = 0, startFrac = 0;
-  for (let ci = 0; ci < cols.length; ci++) {
-    const c = cols[ci];
-    if (barStart < c.startDay + c.count) {
-      startCol  = ci;
-      startFrac = (barStart - c.startDay) / c.fullSpan; // 0..1, proportional to full column span
-      break;
-    }
-  }
-
-  // Sum pixel width across every column the bar spans, using each column's
-  // own day count as the divisor (handles 28-31 day months correctly,
-  // and the constant 7 for week columns).
-  let widthPx = 0;
-  let remaining = barEnd - barStart;
-  for (let ci = startCol; ci < cols.length && remaining > 0; ci++) {
-    const c = cols[ci];
-    const colStartOffset = ci === startCol ? (barStart - c.startDay) : 0;
-    const daysInColUsed  = Math.min(c.count - colStartOffset, remaining);
-    widthPx   += (daysInColUsed / c.fullSpan) * cw;
-    remaining -= daysInColUsed;
-  }
-
-  const leftPx    = startFrac * cw;
+  const leftAbs  = dayToX(barStart);
+  const rightAbs = dayToX(barEnd);
+  const startCol = colIndexForDay(barStart);
   const startCell = tr.cells[startCol + 1];
   if (!startCell) return;
 
+  const leftPx  = leftAbs - startCol * cellW;
+  const widthPx = rightAbs - leftAbs;
+
   const bar = _makeBar(task, 0, 0);
-  bar.style.cssText = `background:${task.color};left:${leftPx}px;width:${Math.max(2,widthPx-1)}px;`;
+  bar.style.cssText = `background:${task.color};left:${leftPx}px;width:${Math.max(2, widthPx - 1)}px;`;
   startCell.appendChild(bar);
 }
 
@@ -891,14 +841,24 @@ document.getElementById('ganttTable').addEventListener('mousedown', e => {
   }
 });
 
+// Left edge of the day-0 column, in viewport pixels. This is the only DOM
+// measurement drag/click math needs — it's a fixed structural offset, not
+// per-column geometry, so it can't drift the way the old per-day-width
+// approach could.
+function gridLeftPx() {
+  const wrap = document.querySelector('.table-wrap');
+  return wrap.getBoundingClientRect().left + LABEL_W;
+}
+
 function onBarMousedown(e, bar) {
   const action = e.target.dataset.action;
   const id     = +(bar.dataset.id);
   const task   = tasks.find(t=>t.id===id);
   if (!task) return;
+  const startDay = xToDay(e.clientX - gridLeftPx());
   dragState = action
-    ? {type:'resize',action,task,startX:e.clientX,origStart:task.start,origDur:task.dur}
-    : {type:'move',  task,   startX:e.clientX,origStart:task.start,origDur:task.dur};
+    ? {type:'resize',action,task,startDay,origStart:task.start,origDur:task.dur}
+    : {type:'move',  task,   startDay,origStart:task.start,origDur:task.dur};
   e.preventDefault(); e.stopPropagation();
 }
 
@@ -907,39 +867,23 @@ function onCellMousedown(e, cell) {
   const task   = tasks.find(t=>t.id===taskId);
   if (!task) return;
 
-  let day;
-  if (!weekMode && !monthMode) {
-    day = +cell.dataset.day;
-  } else {
-    // Determine which day within the week/month column the cursor is over
-    const colStart = weekMode ? +cell.dataset.weekStart : +cell.dataset.monthStart;
-    const colCount = weekMode ? +cell.dataset.weekCount : +cell.dataset.monthCount;
-    const rect      = cell.getBoundingClientRect();
-    const frac      = Math.min(0.999, Math.max(0, (e.clientX - rect.left) / rect.width));
-    day = colStart + Math.floor(frac * colCount);
-  }
+  const day = xToDay(e.clientX - gridLeftPx());
 
   if (day<task.start||day>=task.start+task.dur) {
-    dragState={type:'move',task,startX:e.clientX,origStart:task.start,origDur:task.dur};
+    dragState={type:'move',task,startDay:day,origStart:task.start,origDur:task.dur};
     e.preventDefault();
   }
 }
 
 document.addEventListener('mousemove', e => {
   if (!dragState) return;
-  // In week/month mode each column spans multiple days, so convert px → days
-  // using a per-day pixel width rather than the column's pixel width.
-  // Week columns are always 7 days; month columns vary (28-31), so for month
-  // mode we use the actual calendar month the task is currently anchored in.
-  let dayPx = cellW;
-  if (weekMode) {
-    dayPx = cellW / 7;
-  } else if (monthMode) {
-    const d = addDays(baseDate, Math.max(0, Math.min(days - 1, dragState.task.start)));
-    const daysInMo = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    dayPx = cellW / daysInMo;
-  }
-  const delta = Math.round((e.clientX-dragState.startX)/dayPx);
+  // Always resolve the day directly under the cursor right now (an absolute
+  // lookup via xToDay), rather than accumulating a pixel delta through a
+  // per-day width that can silently change mid-drag (e.g. when a task
+  // crosses from a 31-day month into a 28-day one). This keeps the bar
+  // perfectly tracking the cursor with no snapping.
+  const dayNow = xToDay(e.clientX - gridLeftPx());
+  const delta  = dayNow - dragState.startDay;
   const {task,origStart,origDur,type,action} = dragState;
   // `days` equals dayOffset(endDate)+1 when an end date is set, so clamping
   // start+dur to <= days enforces the red-line boundary in all three modes.
@@ -957,10 +901,6 @@ document.addEventListener('mousemove', e => {
 
 // Lightweight bar repositioning during drag — avoids full DOM rebuild and reflow jumps
 function updateBarInPlace(task) {
-  const barStart = Math.max(0, task.start);
-  const barEnd   = Math.min(days, task.start + task.dur);
-  const span     = barEnd - barStart;
-
   // Move the bar element to the correct cell without rebuilding the whole table
   const tbody = document.getElementById('ganttBody');
   const row   = tbody.querySelector(`tr[data-id="${task.id}"]`);
@@ -970,62 +910,78 @@ function updateBarInPlace(task) {
   const existingBar = row.querySelector('.bar');
   if (existingBar) existingBar.remove();
 
-  if (barStart >= days || barEnd <= 0 || span <= 0) return;
-
-  if (!weekMode && !monthMode) {
-    const startCell = row.cells[barStart + 1];
-    if (startCell) {
-      const extraPx = barEnd < days ? span - 1 : 0;
-      startCell.appendChild(_makeBar(task, span, extraPx));
-    }
-    return;
-  }
-
-  // ── WEEK/MONTH MODE: place with day-level precision inside columns ─────
-  const cols = monthMode ? getMonthCols() : getWeekCols();
-  _placeBarCols(row, task, cols, cellW, days);
+  _placeBarUnified(row, task, days);
 }
 
 // Recompute week columns for the current baseDate/days (mirrors the logic in render())
+// Every column is a *complete* calendar week (Mon–Sun), so its pixel width
+// is always exactly `cellW`. The grid starts on the Monday on/before
+// baseDate (startDay may be negative) and ends once it has covered the
+// last visible day. Any days of the first/last column that fall outside
+// [0, days) are simply rendered muted — see render()'s out-of-range overlay.
 function getWeekCols() {
+  const dow      = baseDate.getDay(); // 0=Sun..6=Sat
+  const toMonday = dow === 0 ? -6 : -(dow - 1); // ≤ 0 offset of the Monday on/before baseDate
   const weekCols = [];
-  let d0 = 0;
+  let d0 = toMonday;
   while (d0 < days) {
-    const date  = addDays(baseDate, d0);
-    const dow   = date.getDay();
-    const toMon = dow === 1 ? 7 : dow === 0 ? 1 : 8 - dow;
-    const isLast = d0 + toMon >= days;
-    // When an end date is set and this is the last column, let it extend to
-    // the end of the full week so the grey zone is visible after the red line.
-    const count = (endDate && isLast) ? toMon : Math.min(toMon, days - d0);
-    weekCols.push({ startDay: d0, count, fullSpan: 7 });
-    d0 += Math.min(toMon, days - d0); // always advance by clipped amount
+    weekCols.push({ startDay: d0, fullSpan: 7 });
+    d0 += 7;
   }
   return weekCols;
 }
 
-// Recompute month columns for the current baseDate/days. Each column = one
-// calendar month; first/last columns may be partial. count = actual days
-// of the range falling in that month (28-31, or fewer at the edges).
+// Every column is a *complete* calendar month. The grid starts on the 1st
+// of the month on/before baseDate (startDay may be negative). Portions of
+// the first/last column outside [0, days) are rendered muted.
 function getMonthCols() {
+  const firstOfMonth = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
   const monthCols = [];
-  let d0 = 0;
+  let d0 = dayOffset(firstOfMonth); // ≤ 0
   while (d0 < days) {
-    const date     = addDays(baseDate, d0);
-    const y        = date.getFullYear();
-    const m        = date.getMonth();
-    const daysInMo = new Date(y, m + 1, 0).getDate(); // days in this calendar month
-    const dayOfMo  = date.getDate(); // 1-based
-    const toEndOfMo = daysInMo - dayOfMo + 1; // days remaining incl. today
-    const clipped  = Math.min(toEndOfMo, days - d0);
-    const isLast   = d0 + clipped >= days;
-    // When an end date is set and this is the last column, extend to end of
-    // full calendar month so the grey zone after the red line is visible.
-    const count    = (endDate && isLast) ? toEndOfMo : clipped;
-    monthCols.push({ startDay: d0, count, daysInMonth: daysInMo, fullSpan: daysInMo });
-    d0 += clipped; // always advance by clipped amount to reach next month
+    const d        = addDays(baseDate, d0);
+    const daysInMo = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    monthCols.push({ startDay: d0, fullSpan: daysInMo, daysInMonth: daysInMo });
+    d0 += daysInMo;
   }
   return monthCols;
+}
+
+// ── Canonical day-offset ⇄ pixel conversion ───────────────────────────────
+// Every column (day, week, or month) is exactly `cellW` wide, so column i
+// occupies pixels [i*cellW, (i+1)*cellW). Within a week/month column, a day
+// offset maps to a fraction of that column's fullSpan. This pair of
+// functions is the ONLY place day/pixel math happens — headers, cells,
+// bars, the end-date line, and dragging all call through here so nothing
+// can drift out of sync with anything else.
+function dayToX(offset) {
+  if (!weekMode && !monthMode) return offset * cellW;
+  const cols = monthMode ? getMonthCols() : getWeekCols();
+  for (let i = 0; i < cols.length; i++) {
+    const c = cols[i];
+    if (offset < c.startDay + c.fullSpan || i === cols.length - 1) {
+      return i * cellW + ((offset - c.startDay) / c.fullSpan) * cellW;
+    }
+  }
+  return cols.length * cellW;
+}
+function xToDay(px) {
+  if (!weekMode && !monthMode) return Math.floor(px / cellW);
+  const cols = monthMode ? getMonthCols() : getWeekCols();
+  if (!cols.length) return 0;
+  let idx = Math.max(0, Math.min(cols.length - 1, Math.floor(px / cellW)));
+  const c = cols[idx];
+  const frac = (px - idx * cellW) / cellW;
+  return Math.floor(c.startDay + frac * c.fullSpan);
+}
+// Which data-column index (0-based, matching tr.cells[i+1]) a day offset falls in.
+function colIndexForDay(offset) {
+  if (!weekMode && !monthMode) return offset;
+  const cols = monthMode ? getMonthCols() : getWeekCols();
+  for (let i = 0; i < cols.length; i++) {
+    if (offset < cols[i].startDay + cols[i].fullSpan) return i;
+  }
+  return Math.max(0, cols.length - 1);
 }
 
 // Returns the active column set + per-column "full span" divisor (7 for
@@ -1138,7 +1094,6 @@ function chartData() {
 
 function applyChartData(data) {
   tasks    = data.tasks;
-  cellW    = data.cellW || 28;
   baseDate = new Date(data.baseDate+'T00:00:00');
   endDate  = data.endDate ? new Date(data.endDate+'T00:00:00') : null;
   if (endDate) {
@@ -1149,6 +1104,9 @@ function applyChartData(data) {
     days = data.days || 30;
     defaultDays = days;
   }
+  // cellW is always derived from the current view + label widths, never
+  // trusted from a save file (an old/foreign value would just be wrong now).
+  cellW = computeCellW(currentMode());
   nextId   = tasks.length ? Math.max(...tasks.map(t=>t.id))+1 : 1;
   startInput.value = data.baseDate;
   endInput.value   = data.endDate || '';
