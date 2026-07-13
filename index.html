@@ -124,12 +124,37 @@
     .view-btn.active:hover { background: var(--accent); opacity: 0.9; }
 
     .chart-container {
-      overflow-x: auto;
+      overflow: hidden;
       border: 0.5px solid var(--border);
       border-radius: 12px;
       background: var(--surface);
       position: relative;
     }
+
+    /* Thin scrollbar shown above the grid instead of below it, so it isn't
+       right next to (and easily fat-fingered instead of) the Add task row.
+       It has no visible content of its own — topScrollbarInner is sized in
+       JS to match the table's actual scrollable width, and its scroll
+       position is kept in sync with the real scroll container below. */
+    .top-scrollbar {
+      overflow-x: auto;
+      overflow-y: hidden;
+      height: 14px;
+      border-bottom: 0.5px solid var(--border);
+      border-radius: 12px 12px 0 0;
+    }
+    .top-scrollbar-inner { height: 1px; }
+
+    .table-scroll {
+      overflow-x: auto;
+      overflow-y: hidden;
+      /* The real scrollbar lives in .top-scrollbar above; hide this one
+         visually while keeping it scrollable (via scrollLeft sync and
+         direct trackpad/shift-wheel scrolling on the grid itself). */
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .table-scroll::-webkit-scrollbar { height: 0; display: none; }
 
     table { border-collapse: collapse; width: auto; min-width: 580px; }
     .table-wrap { position: relative; display: inline-block; min-width: 100%; }
@@ -351,13 +376,16 @@
 </div>
 
 <div class="chart-container" id="chartContainer">
-  <div class="table-wrap" id="tableWrap">
-    <table id="ganttTable" style="table-layout:fixed;">
-      <thead id="ganttHead"></thead>
-      <tbody id="ganttBody"></tbody>
-    </table>
-    <div id="endZone" style="display:none;position:absolute;top:0;bottom:0;right:0;background:rgba(0,0,0,0.04);pointer-events:none;z-index:9;"></div>
-    <div id="todayLine" style="display:none;position:absolute;top:0;bottom:0;width:2px;background:var(--accent);opacity:0.7;pointer-events:none;z-index:10;"></div>
+  <div class="top-scrollbar" id="topScrollbar"><div class="top-scrollbar-inner" id="topScrollbarInner"></div></div>
+  <div class="table-scroll" id="tableScroll">
+    <div class="table-wrap" id="tableWrap">
+      <table id="ganttTable" style="table-layout:fixed;">
+        <thead id="ganttHead"></thead>
+        <tbody id="ganttBody"></tbody>
+      </table>
+      <div id="endZone" style="display:none;position:absolute;top:0;bottom:0;right:0;background:rgba(0,0,0,0.04);pointer-events:none;z-index:9;"></div>
+      <div id="todayLine" style="display:none;position:absolute;top:0;bottom:0;width:2px;background:var(--accent);opacity:0.7;pointer-events:none;z-index:10;"></div>
+    </div>
   </div>
   <div class="add-row" onclick="addTask()">
     <i class="ti ti-plus" aria-hidden="true"></i> Add task
@@ -712,7 +740,34 @@ function render() {
   }
   updateEndZone();
   updateTodayLine();
+  syncTopScrollbarWidth();
 }
+
+// ── Top scrollbar (mirrors the grid's real horizontal scroll) ─────────────
+// The grid's own scrollbar is hidden; this thin bar above the header is the
+// only one the user sees/drags, keeping it away from the Add task row below
+// the grid. Width is resynced after every render since column count/cellW
+// (and therefore total scrollable width) can change with the view, zoom,
+// or date range.
+const topScrollbar      = document.getElementById('topScrollbar');
+const topScrollbarInner = document.getElementById('topScrollbarInner');
+const tableScroll       = document.getElementById('tableScroll');
+function syncTopScrollbarWidth() {
+  topScrollbarInner.style.width = tableScroll.scrollWidth + 'px';
+}
+let _syncingScroll = false;
+topScrollbar.addEventListener('scroll', () => {
+  if (_syncingScroll) return;
+  _syncingScroll = true;
+  tableScroll.scrollLeft = topScrollbar.scrollLeft;
+  _syncingScroll = false;
+});
+tableScroll.addEventListener('scroll', () => {
+  if (_syncingScroll) return;
+  _syncingScroll = true;
+  topScrollbar.scrollLeft = tableScroll.scrollLeft;
+  _syncingScroll = false;
+});
 
 // ── End-date boundary zone ───────────────────────────────────────────────
 // Shades everything past the end date, computed directly from dayToX — the
