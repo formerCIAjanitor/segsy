@@ -123,6 +123,9 @@
     .view-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     .view-btn.active:hover { background: var(--accent); opacity: 0.9; }
 
+    .toggle-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .toggle-btn.active:hover { background: var(--accent); opacity: 0.9; }
+
     .chart-container {
       overflow: hidden;
       border: 0.5px solid var(--border);
@@ -371,6 +374,9 @@
     <input type="file" id="fileInput" accept=".json" style="display:none" />
   </div>
   <div class="toolbar-group">
+    <button id="btnTodayLine" onclick="toggleTodayLine()" class="toggle-btn active" title="Show/hide the today line">
+      <i class="ti ti-line-dashed" aria-hidden="true"></i> Today line
+    </button>
     <button onclick="exportPNG()"><i class="ti ti-photo-down" aria-hidden="true"></i> Export PNG</button>
   </div>
 </div>
@@ -417,6 +423,7 @@ let defaultDays = 30;  // restored when end date is cleared
 let cellW       = 28;
 let weekMode    = false;  // true = each column represents 7 days
 let monthMode   = false;  // true = each column represents one calendar month
+let showTodayLine = true; // false = hide the today marker on screen and in PNG exports
 let baseDate = new Date(); baseDate.setHours(0,0,0,0);
 let endDate  = null;  // null = no deadline set
 
@@ -575,6 +582,15 @@ function setView(mode) {
   document.getElementById('btnMonth').classList.toggle('active', mode === 'month');
 
   render(); autoSave();
+}
+
+// Toggles the today marker for both the live grid (updateTodayLine) and
+// PNG exports (exportPNG) — both read the same showTodayLine flag, so
+// there's one source of truth for whether the line should be visible.
+function toggleTodayLine() {
+  showTodayLine = !showTodayLine;
+  document.getElementById('btnTodayLine').classList.toggle('active', showTodayLine);
+  updateTodayLine();
 }
 
 // Recompute the fixed column width for the active view when the window
@@ -807,6 +823,8 @@ function gridDayBounds() {
 function updateTodayLine() {
   const line = document.getElementById('todayLine');
   if (!line) return;
+
+  if (!showTodayLine) { line.style.display = 'none'; return; }
 
   const today    = new Date(); today.setHours(0,0,0,0);
   const todayOff = dayOffset(today);
@@ -1391,7 +1409,7 @@ function exportPNG() {
   ctx.beginPath(); ctx.moveTo(LABEL_W,0); ctx.lineTo(LABEL_W,H); ctx.stroke();
 
   // Today line — centered on today the same way updateTodayLine does
-  if (todayOff>=0&&todayOff<days) {
+  if (showTodayLine && todayOff>=0&&todayOff<days) {
     const tx=LABEL_W+(dayToX(todayOff)+dayToX(todayOff+1))/2;
     ctx.strokeStyle=C.accent; ctx.lineWidth=2; ctx.globalAlpha=0.7;
     ctx.beginPath(); ctx.moveTo(tx,0); ctx.lineTo(tx,H); ctx.stroke();
