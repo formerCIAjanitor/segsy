@@ -1212,6 +1212,10 @@ function downloadJSON() {
 function triggerLoad() { document.getElementById('fileInput').click(); }
 
 // ── Export PNG ─────────────────────────────────────────────────────────
+// Mirrors whatever's on screen: reuses getWeekCols/getMonthCols for column
+// layout and dayToX for bar placement — the same functions render() and
+// dragging use — so the exported image can't drift out of sync with the
+// current view (day/week/month), zoom, or date range.
 function exportPNG() {
   const DPR     = 2;
   const ROW_H   = 36;
@@ -1220,7 +1224,10 @@ function exportPNG() {
   const DAY_H   = 20;
   const HEAD_H  = MONTH_H + DAY_H;
 
-  const W = LABEL_W + days*cellW;
+  const cols    = monthMode ? getMonthCols() : weekMode ? getWeekCols() : null;
+  const numCols = cols ? cols.length : days;
+
+  const W = LABEL_W + numCols*cellW;
   const H = HEAD_H  + tasks.length*ROW_H;
 
   const canvas  = document.createElement('canvas');
@@ -1245,33 +1252,44 @@ function exportPNG() {
   // Background
   ctx.fillStyle = C.bg; ctx.fillRect(0,0,W,H);
 
-  // ── Month row ───────────────────────────────────────────────────────────
-  ctx.fillStyle = C.bg; ctx.fillRect(0,0,W,MONTH_H);
-
-  // Build month spans
-  const monthSpans = [];
-  for (let i = 0; i < days; i++) {
-    const d = addDays(baseDate, i);
-    const key = `${d.getFullYear()}-${d.getMonth()}`;
-    if (!monthSpans.length || monthSpans[monthSpans.length-1].key !== key) {
-      monthSpans.push({ key, label: d.toLocaleString('default', {month:'short', year:'numeric'}), start: i, count: 1 });
-    } else {
-      monthSpans[monthSpans.length-1].count++;
+  // Mirrors _mutedOverlayHTML: shades the portion of an edge week/month
+  // column that falls outside [0, days) — purely cosmetic, like on screen.
+  function drawMutedOverlay(c, x, y, h) {
+    const leadDays = Math.max(0, Math.min(c.fullSpan, -c.startDay));
+    ctx.fillStyle = C.muted; ctx.globalAlpha = 0.25;
+    if (leadDays > 0) ctx.fillRect(x, y, (leadDays / c.fullSpan) * cellW, h);
+    const trailDays = Math.max(0, (c.startDay + c.fullSpan) - days);
+    if (trailDays > 0) {
+      const w = (Math.min(trailDays, c.fullSpan) / c.fullSpan) * cellW;
+      ctx.fillRect(x + cellW - w, y, w, h);
     }
+    ctx.globalAlpha = 1;
+  }
+
+  // ── Group row (row1): month spans (day/week mode) or year spans (month mode) ──
+  ctx.fillStyle = C.bg; ctx.fillRect(0,0,W,MONTH_H);
+  const groupSpans = [];
+  for (let ci = 0; ci < numCols; ci++) {
+    const d     = cols ? addDays(baseDate, cols[ci].startDay) : addDays(baseDate, ci);
+    const key   = monthMode ? `${d.getFullYear()}` : `${d.getFullYear()}-${d.getMonth()}`;
+    const label = monthMode ? `${d.getFullYear()}` : d.toLocaleString('default', {month:'short', year:'numeric'});
+    if (!groupSpans.length || groupSpans[groupSpans.length-1].key !== key)
+      groupSpans.push({ key, label, start: ci, count: 1 });
+    else groupSpans[groupSpans.length-1].count++;
   }
 
   ctx.font = '600 11px system-ui,sans-serif';
-  for (const ms of monthSpans) {
-    const x = LABEL_W + ms.start * cellW;
-    const w = ms.count * cellW;
+  for (const gs of groupSpans) {
+    const x = LABEL_W + gs.start * cellW;
+    const w = gs.count * cellW;
     ctx.fillStyle = C.secondary;
-    ctx.fillText(ms.label, x + 3, MONTH_H/2 + 4);
-    // right border per month
+    ctx.fillText(gs.label, x + 3, MONTH_H/2 + 4);
+    // right border per group
     ctx.strokeStyle = C.border; ctx.lineWidth = 0.5;
     ctx.beginPath(); ctx.moveTo(x+w, 0); ctx.lineTo(x+w, MONTH_H); ctx.stroke();
   }
 
-  // Month row bottom border (stronger)
+  // Group row bottom border (stronger)
   ctx.strokeStyle = C.borderStrong; ctx.lineWidth = 0.5;
   ctx.beginPath(); ctx.moveTo(0, MONTH_H); ctx.lineTo(W, MONTH_H); ctx.stroke();
 
@@ -1279,28 +1297,39 @@ function exportPNG() {
   ctx.font = '500 12px system-ui,sans-serif'; ctx.fillStyle = C.secondary;
   ctx.fillText('Task', 10, MONTH_H/2 + 4);
 
-  // ── Day row ─────────────────────────────────────────────────────────────
-  for (let i = 0; i < days; i++) {
-    const d    = addDays(baseDate, i);
-    const isWE = d.getDay()===0||d.getDay()===6;
-    const isTd = i===todayOff;
-    const x    = LABEL_W + i*cellW;
-    const y    = MONTH_H;
-    if (isWE) { ctx.fillStyle=C.alt;      ctx.fillRect(x,y,cellW,DAY_H); }
-    if (isTd) { ctx.fillStyle=C.accentBg; ctx.fillRect(x,y,cellW,DAY_H); }
-    const show = cellW >= 22 ? i % 7 === 0 : i % 14 === 0;
-    if (show) {
-      ctx.font      = '11px system-ui,sans-serif';
-      ctx.fillStyle = isTd ? C.accent : C.muted;
+  // ── Column row (row2): day numbers, week numbers, or month names ─────────
+  for (let ci = 0; ci < numCols; ci++) {
+    const x = LABEL_W + ci*cellW;
+    const y = MONTH_H;
+    if (cols) {
+      const c = cols[ci];
+      const d = addDays(baseDate, c.startDay);
+      const label = monthMode ? d.toLocaleString('default', {month:'short'}) : `Week ${isoWeekNumber(d)}`;
+      ctx.font = '11px system-ui,sans-serif'; ctx.fillStyle = C.muted;
       ctx.textAlign = 'center';
-      ctx.fillText(String(d.getDate()), x + cellW/2, y + DAY_H/2 + 4);
+      ctx.fillText(label, x + cellW/2, y + DAY_H/2 + 4);
       ctx.textAlign = 'left';
+      drawMutedOverlay(c, x, y, DAY_H);
+    } else {
+      const d    = addDays(baseDate, ci);
+      const isWE = d.getDay()===0||d.getDay()===6;
+      const isTd = ci===todayOff;
+      if (isWE) { ctx.fillStyle=C.alt;      ctx.fillRect(x,y,cellW,DAY_H); }
+      if (isTd) { ctx.fillStyle=C.accentBg; ctx.fillRect(x,y,cellW,DAY_H); }
+      const show = cellW >= 22 ? ci % 7 === 0 : ci % 14 === 0;
+      if (show) {
+        ctx.font      = '11px system-ui,sans-serif';
+        ctx.fillStyle = isTd ? C.accent : C.muted;
+        ctx.textAlign = 'center';
+        ctx.fillText(String(d.getDate()), x + cellW/2, y + DAY_H/2 + 4);
+        ctx.textAlign = 'left';
+      }
     }
     ctx.strokeStyle=C.border; ctx.lineWidth=0.5;
     ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y+DAY_H); ctx.stroke();
   }
 
-  // Day row bottom border
+  // Column row bottom border
   ctx.strokeStyle=C.border; ctx.lineWidth=0.5;
   ctx.beginPath(); ctx.moveTo(0,HEAD_H); ctx.lineTo(W,HEAD_H); ctx.stroke();
 
@@ -1309,13 +1338,17 @@ function exportPNG() {
     const y = HEAD_H+ti*ROW_H;
     ctx.fillStyle=C.bg; ctx.fillRect(0,y,W,ROW_H);
 
-    for (let i=0; i<days; i++) {
-      const d    = addDays(baseDate,i);
-      const isWE = d.getDay()===0||d.getDay()===6;
-      const isTd = i===todayOff;
-      const cx   = LABEL_W+i*cellW;
-      if (isWE) { ctx.fillStyle=C.alt;      ctx.fillRect(cx,y,cellW,ROW_H); }
-      if (isTd) { ctx.fillStyle=C.accentBg; ctx.fillRect(cx,y,cellW,ROW_H); }
+    for (let ci=0; ci<numCols; ci++) {
+      const cx = LABEL_W+ci*cellW;
+      if (cols) {
+        drawMutedOverlay(cols[ci], cx, y, ROW_H);
+      } else {
+        const d    = addDays(baseDate,ci);
+        const isWE = d.getDay()===0||d.getDay()===6;
+        const isTd = ci===todayOff;
+        if (isWE) { ctx.fillStyle=C.alt;      ctx.fillRect(cx,y,cellW,ROW_H); }
+        if (isTd) { ctx.fillStyle=C.accentBg; ctx.fillRect(cx,y,cellW,ROW_H); }
+      }
       ctx.strokeStyle=C.border; ctx.lineWidth=0.5;
       ctx.beginPath(); ctx.moveTo(cx,y); ctx.lineTo(cx,y+ROW_H); ctx.stroke();
     }
@@ -1336,11 +1369,13 @@ function exportPNG() {
     if (label!==task.name) label=label.slice(0,-1)+'…';
     ctx.fillText(label, 30, y+ROW_H/2+4);
 
-    // Bar
+    // Bar — positioned with dayToX, the same day↔pixel mapping the live
+    // grid and dragging use, so it lands correctly in every view mode.
     const barStart=Math.max(0,task.start);
     const barEnd  =Math.min(days,task.start+task.dur);
     if (barStart<days&&barEnd>0) {
-      const bx=LABEL_W+barStart*cellW, bw=(barEnd-barStart)*cellW-1, bh=ROW_H-12;
+      const bx=LABEL_W+dayToX(barStart), bxEnd=LABEL_W+dayToX(barEnd);
+      const bw=bxEnd-bx-1, bh=ROW_H-12;
       ctx.fillStyle=task.color;
       ctx.beginPath(); ctx.roundRect(bx,y+6,bw,bh,4); ctx.fill();
       if (bw>20) {
@@ -1355,9 +1390,9 @@ function exportPNG() {
   ctx.strokeStyle=C.border; ctx.lineWidth=0.5;
   ctx.beginPath(); ctx.moveTo(LABEL_W,0); ctx.lineTo(LABEL_W,H); ctx.stroke();
 
-  // Today line
+  // Today line — centered on today the same way updateTodayLine does
   if (todayOff>=0&&todayOff<days) {
-    const tx=LABEL_W+todayOff*cellW+cellW/2;
+    const tx=LABEL_W+(dayToX(todayOff)+dayToX(todayOff+1))/2;
     ctx.strokeStyle=C.accent; ctx.lineWidth=2; ctx.globalAlpha=0.7;
     ctx.beginPath(); ctx.moveTo(tx,0); ctx.lineTo(tx,H); ctx.stroke();
     ctx.globalAlpha=1;
