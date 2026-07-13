@@ -449,6 +449,24 @@ document.getElementById('fileInput').addEventListener('change', e => {
 
 // ── Helpers ────────────────────────────────────────────────────────────
 function addDays(d,n) { const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+
+// ISO-8601 week number (1-53) for a given date. ISO weeks always start on
+// Monday and week 1 is the week containing the year's first Thursday — this
+// is the standard, unambiguous definition, so it stays correct across year
+// boundaries and leap years without any special-casing here. Since our week
+// columns are already Monday-anchored (getWeekCols), the ISO week number of
+// a column's startDay is exactly the number that column represents.
+function isoWeekNumber(d) {
+  // Copy and normalize to UTC midnight to avoid DST-related off-by-ones.
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  // ISO weekday: Monday=1 .. Sunday=7
+  const isoDow = date.getUTCDay() || 7;
+  // Shift to the Thursday of this date's ISO week — the year that Thursday
+  // falls in is the ISO week-numbering year, and its week is always week N.
+  date.setUTCDate(date.getUTCDate() + 4 - isoDow);
+  const isoYearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  return Math.ceil((((date - isoYearStart) / 86400000) + 1) / 7);
+}
 function dayOffset(d) {
   // Use UTC midnight arithmetic to avoid DST shifts
   const a = Date.UTC(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
@@ -483,13 +501,9 @@ function labelMinWidth(mode) {
     return measureTextWidth('30', DATE_HEADER_FONT) + LABEL_PAD;
   }
   if (mode === 'week') {
-    // "D Mon" e.g. "2 Jun" .. "31 Dec" — check every month name at 2-digit width.
-    let max = 0;
-    for (let m = 0; m < 12; m++) {
-      const label = `31 ${new Date(2000, m, 1).toLocaleString('default', {month:'short'})}`;
-      max = Math.max(max, measureTextWidth(label, DATE_HEADER_FONT));
-    }
-    return max + LABEL_PAD;
+    // "Week NN" — worst case is the widest 2-digit week number, "Week 52".
+    const label = 'Week 52';
+    return measureTextWidth(label, DATE_HEADER_FONT) + LABEL_PAD;
   }
   // month mode: short month name, e.g. "Sep"
   let max = 0;
@@ -660,7 +674,7 @@ function render() {
     }
     row1 += '</tr>';
 
-    // Header row 2: week-start date ("D Mon") or month name ("Jun")
+    // Header row 2: week number ("Week 24") or month name ("Jun")
     let row2 = `<tr><th class="task-col date-header" style="border-right:0.5px solid var(--border-strong);"></th>`;
     for (let ci = 0; ci < numCols; ci++) {
       const c    = cols[ci];
@@ -668,7 +682,7 @@ function render() {
       let cls = 'date-header';
       const label = monthMode
         ? d.toLocaleString('default', {month:'short'})
-        : `${d.getDate()} ${d.toLocaleString('default',{month:'short'})}`;
+        : `Week ${isoWeekNumber(d)}`;
       row2 += `<th class="${cls}" style="width:${cellW}px;min-width:${cellW}px;">${label}${_mutedOverlayHTML(c)}</th>`;
     }
     row2 += '</tr>';
