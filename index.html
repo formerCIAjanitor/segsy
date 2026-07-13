@@ -171,7 +171,7 @@
     .month-header-label { position: sticky; left: 164px; }
 
     .date-header.weekend  { background: var(--surface-alt); }
-
+    .date-header.today-col { background: var(--accent-bg); color: var(--accent); font-weight: 500; }
 
     .task-label {
       padding: 6px 10px;
@@ -220,7 +220,7 @@
     }
 
     .cell.weekend   { background: var(--surface-alt); }
-
+    .cell.today-col { background: var(--accent-bg); }
 
     .bar {
       position: absolute; top: 6px; bottom: 6px;
@@ -356,8 +356,8 @@
       <thead id="ganttHead"></thead>
       <tbody id="ganttBody"></tbody>
     </table>
+    <div id="endLine" style="display:none;position:absolute;top:0;bottom:0;width:2px;background:#e24b4a;opacity:0.7;pointer-events:none;z-index:10;"></div>
     <div id="endZone" style="display:none;position:absolute;top:0;bottom:0;right:0;background:rgba(0,0,0,0.04);pointer-events:none;z-index:9;"></div>
-    <div id="todayLine" style="display:none;position:absolute;top:0;bottom:0;width:2px;background:var(--accent);opacity:0.7;pointer-events:none;z-index:10;"></div>
   </div>
   <div class="add-row" onclick="addTask()">
     <i class="ti ti-plus" aria-hidden="true"></i> Add task
@@ -568,6 +568,9 @@ function _mutedOverlayHTML(c) {
 }
 
 function render() {
+  const today       = new Date(); today.setHours(0,0,0,0);
+  const todayOff    = dayOffset(today);
+
   // Monday anchor: find the Monday on or before baseDate
   const baseDow        = baseDate.getDay(); // 0=Sun,1=Mon,...,6=Sat
   const daysToMonday   = baseDow === 0 ? -6 : 1 - baseDow; // offset to prev/current Monday
@@ -601,10 +604,12 @@ function render() {
     for (let i = 0; i < days; i++) {
       const d      = addDays(baseDate, i);
       const isWE   = d.getDay()===0||d.getDay()===6;
+      const isTd   = i===todayOff;
       const offsetFromMonday = i - mondayAnchor;
       const show = offsetFromMonday % 7 === 0;
       let cls = 'date-header';
       if (isWE)   cls += ' weekend';
+      if (isTd)   cls += ' today-col';
       row2 += `<th class="${cls}" style="width:${cellW}px;min-width:${cellW}px;">${show ? d.getDate() : ''}</th>`;
     }
     row2 += '</tr>';
@@ -621,9 +626,11 @@ function render() {
       for (let i = 0; i < days; i++) {
         const d      = addDays(baseDate, i);
         const isWE   = d.getDay()===0||d.getDay()===6;
+        const isTd   = i===todayOff;
         const td     = document.createElement('td');
         let cls = 'cell';
         if (isWE)   cls += ' weekend';
+        if (isTd)   cls += ' today-col';
         td.className      = cls;
         td.style.cssText  = `width:${cellW}px;min-width:${cellW}px;`;
         td.dataset.day    = i;
@@ -665,7 +672,9 @@ function render() {
     for (let ci = 0; ci < numCols; ci++) {
       const c    = cols[ci];
       const d    = addDays(baseDate, c.startDay);
+      const isTd = todayOff >= c.startDay && todayOff < c.startDay + c.fullSpan;
       let cls = 'date-header';
+      if (isTd) cls += ' today-col';
       const label = monthMode
         ? d.toLocaleString('default', {month:'short'})
         : `${d.getDate()} ${d.toLocaleString('default',{month:'short'})}`;
@@ -684,8 +693,10 @@ function render() {
 
       for (let ci = 0; ci < numCols; ci++) {
         const c    = cols[ci];
+        const isTd = todayOff >= c.startDay && todayOff < c.startDay + c.fullSpan;
         const td   = document.createElement('td');
         let cls = 'cell';
+        if (isTd) cls += ' today-col';
         td.className     = cls;
         td.style.cssText = `width:${cellW}px;min-width:${cellW}px;`;
         td.dataset.taskId = task.id;
@@ -696,61 +707,41 @@ function render() {
       _placeBarUnified(tr, task, days);
     });
   }
-  updateEndZone();
-  updateTodayLine();
+  updateEndLine();
 }
 
-// ── End-date boundary zone ───────────────────────────────────────────────
-// Shades everything past the end date, computed directly from dayToX — the
-// same function that positions every column and bar — so it can never
-// drift out of sync with what's on screen.
-function updateEndZone() {
-  const zone = document.getElementById('endZone');
-  if (!zone) return;
-  if (!endDate) { zone.style.display = 'none'; return; }
+// ── End-date boundary line ──────────────────────────────────────────────────
+// Draws a pixel-precise red vertical line at the end-date boundary, computed
+// directly from dayToX — the same function that positions every column and
+// bar — so it can never drift out of sync with what's on screen.
+function updateEndLine() {
+  const line = document.getElementById('endLine');
+  if (!line || !endDate) {
+    if (line) line.style.display = 'none';
+    const zone = document.getElementById('endZone');
+    if (zone) zone.style.display = 'none';
+    return;
+  }
 
   const numCols = monthMode ? getMonthCols().length : weekMode ? getWeekCols().length : days;
   const tableRightPx = LABEL_W + numCols * cellW;
   const leftPx = LABEL_W + dayToX(days);
-  const zoneWidth = tableRightPx - leftPx;
 
-  if (zoneWidth > 1) {
-    zone.style.display = 'block';
-    zone.style.left    = leftPx + 'px';
-    zone.style.width   = zoneWidth + 'px';
-    zone.style.right   = '';
-  } else {
-    zone.style.display = 'none';
-  }
-}
-
-// ── Today marker ─────────────────────────────────────────────────────────
-// A thin vertical line through the middle of today's day, computed from
-// dayToX like everything else (so it's pixel-consistent with the columns
-// and bars around it), instead of shading the whole column.
-function gridDayBounds() {
-  if (!weekMode && !monthMode) return { start: 0, end: days };
-  const cols = monthMode ? getMonthCols() : getWeekCols();
-  if (!cols.length) return { start: 0, end: days };
-  const last = cols[cols.length - 1];
-  return { start: cols[0].startDay, end: last.startDay + last.fullSpan };
-}
-function updateTodayLine() {
-  const line = document.getElementById('todayLine');
-  if (!line) return;
-
-  const today    = new Date(); today.setHours(0,0,0,0);
-  const todayOff = dayOffset(today);
-  const bounds   = gridDayBounds();
-
-  if (todayOff < bounds.start || todayOff >= bounds.end) {
-    line.style.display = 'none';
-    return;
-  }
-
-  const centerPx = LABEL_W + (dayToX(todayOff) + dayToX(todayOff + 1)) / 2;
   line.style.display = 'block';
-  line.style.left    = centerPx + 'px';
+  line.style.left    = leftPx + 'px';
+
+  const zone = document.getElementById('endZone');
+  if (zone) {
+    const zoneWidth = tableRightPx - leftPx;
+    if (zoneWidth > 1) {
+      zone.style.display = 'block';
+      zone.style.left    = leftPx + 'px';
+      zone.style.width   = zoneWidth + 'px';
+      zone.style.right   = '';
+    } else {
+      zone.style.display = 'none';
+    }
+  }
 }
 function _makeLabelTd(task) {
   const labelTd = document.createElement('td');
