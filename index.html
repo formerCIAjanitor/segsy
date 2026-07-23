@@ -115,6 +115,9 @@
 
     button:hover  { background: var(--surface-alt); }
     button:active { transform: scale(0.98); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button:disabled:hover { background: var(--surface); }
+    button:disabled:active { transform: none; }
     .zoom-btn { padding: 7px 10px; }
 
     .view-btn { padding: 7px 14px; border-radius: 0; border-right-width: 0; }
@@ -127,7 +130,17 @@
     .toggle-btn.active:hover { background: var(--accent); opacity: 0.9; }
 
     .chart-container {
-      overflow: hidden;
+      /* Was overflow: hidden. That makes this an overflow-bearing ancestor
+         of .table-scroll (which also sets overflow), and browsers disagree
+         about which of two nested overflow ancestors a sticky descendant
+         (.task-col/.task-label) should reference — Chromium picks
+         .table-scroll (correct, it's the one that actually scrolls),
+         Firefox/Gecko can lock onto this outer, non-scrolling one instead,
+         which never fires the compensation and lets the frozen column drift
+         with the content. overflow: clip still clips to the rounded corners
+         below but doesn't register as a scroll container, so it's no longer
+         a candidate — removes the ambiguity instead of guessing at it. */
+      overflow: clip;
       border: 0.5px solid var(--border);
       border-radius: 12px;
       background: var(--surface);
@@ -159,9 +172,18 @@
     }
     .table-scroll::-webkit-scrollbar { height: 0; display: none; }
 
-    table { border-collapse: collapse; width: auto; min-width: 580px; }
+    table { border-collapse: collapse; width: auto; }
     .table-wrap { position: relative; display: inline-block; min-width: 100%; }
-    .task-col { width: 160px; min-width: 160px; }
+    .task-col {
+      width: 160px; min-width: 160px;
+      /* Frozen first column: stays put while .table-scroll scrolls the date
+         grid beneath it. z-index must clear the today-line (10) and end-zone
+         (9) overlays plus bars (2)/muted overlays (1), all of which can
+         otherwise slide underneath it during scroll; background must be
+         opaque so that scrolled content doesn't show through. */
+      position: sticky; left: 0; z-index: 15;
+      background: var(--surface);
+    }
 
     .date-header {
       font-size: 11px; color: var(--text-muted);
@@ -198,6 +220,12 @@
 
     .month-header-label { position: sticky; left: 164px; }
 
+    /* .date-header sets position:relative, and since it's declared after
+       .task-col with equal specificity, it would otherwise win on the corner
+       header cell (class="task-col date-header") and silently un-stick it.
+       Pin it back down explicitly rather than relying on rule order. */
+    .task-col.date-header { position: sticky; left: 0; }
+
     .date-header.weekend  { background: var(--surface-alt); }
 
 
@@ -208,6 +236,11 @@
       font-size: 13px; color: var(--text);
       display: flex; align-items: center; gap: 6px;
       white-space: nowrap; max-width: 160px;
+      /* Frozen first column, body rows — see .task-col for the full
+         rationale; must match it (same left/z-index/opaque background) or
+         the header and body columns would part ways while scrolling. */
+      position: sticky; left: 0; z-index: 15;
+      background: var(--surface);
     }
 
     .drag-handle {
@@ -368,6 +401,11 @@
     <button id="btnWeek"  onclick="setView('week')"  class="view-btn">Week</button>
     <button id="btnMonth" onclick="setView('month')" class="view-btn">Month</button>
   </div>
+  <div class="toolbar-group" id="zoomGroup">
+    <button id="btnZoomOut" class="zoom-btn" onclick="zoomOut()" title="Zoom out">−</button>
+    <button id="btnZoomIn"  class="zoom-btn" onclick="zoomIn()"  title="Zoom in">+</button>
+    <button id="btnZoomFit" class="zoom-btn" onclick="zoomFit()" title="Fit to width (no horizontal scroll)">↔</button>
+  </div>
   <div class="toolbar-group">
     <button onclick="downloadJSON()"><i class="ti ti-download" aria-hidden="true"></i> Save JSON</button>
     <button onclick="triggerLoad()"><i class="ti ti-folder-open" aria-hidden="true"></i> Load JSON</button>
@@ -421,6 +459,20 @@ let nextId      = 6;
 let days        = 30;
 let defaultDays = 30;  // restored when end date is cleared
 let cellW       = 28;
+// manualCellW: null = auto-fit (cellW derived from container width, the old
+// default behavior); a number = user has zoomed, and that exact px width is
+// used instead (clamped between the mode's label width and ZOOM_CELL_MAX)
+// until they hit the fit-to-width button. Persists across view mode/date
+// range changes and survives save/load — see effectiveCellW/syncCellW.
+// Tracked separately per view mode (day/week/month): each view remembers
+// its own zoom level, so switching views doesn't reclamp and overwrite
+// whatever zoom you'd set in a different view.
+let manualCellWByMode = { day: null, week: null, month: null };
+const ZOOM_STEP     = 4;    // px added/removed per +/- click
+const ZOOM_CELL_MAX = 400;  // sanity ceiling for the +/- buttons only, so repeated
+                             // clicking can't produce absurdly fat columns. Fit-to-width
+                             // is exempt — its whole point is filling the container
+                             // exactly, however wide that needs to be (see zoomFit).
 let weekMode    = false;  // true = each column represents 7 days
 let monthMode   = false;  // true = each column represents one calendar month
 let showTodayLine = true; // false = hide the today marker on screen and in PNG exports
@@ -443,14 +495,14 @@ function applyStartDate(val) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) return;
   baseDate = new Date(val + 'T00:00:00');
   if (endDate) { const c = dayOffset(endDate) + 1; if (c > 0) days = c; }
-  cellW = computeCellW(currentMode());
+  syncCellW(currentMode());
   render(); autoSave();
 }
 function applyEndDate(val) {
   endDate = val ? new Date(val + 'T00:00:00') : null;
   if (endDate) { const c = dayOffset(endDate) + 1; if (c > 0) days = c; }
   else days = defaultDays;
-  cellW = computeCellW(currentMode());
+  syncCellW(currentMode());
   render(); autoSave();
 }
 
@@ -572,10 +624,27 @@ function computeCellW(mode) {
 
 function currentMode() { return monthMode ? 'month' : weekMode ? 'week' : 'day'; }
 
+// Resolves the width a column should actually render at: the auto-fit value
+// from computeCellW() when no manual zoom is active, otherwise the user's
+// chosen px width — reclamped to the *current* mode's label-width floor
+// (switching e.g. Day -> Month can raise the floor). Not re-capped at
+// ZOOM_CELL_MAX here: that ceiling only limits how far +/- can push the
+// value (see zoomIn); a fit-to-width value is allowed to sit above it so
+// "fit" can always mean the actual full container width.
+// This is the only place that decides "auto or manual" — every call site
+// that used to call computeCellW() directly now calls syncCellW() instead,
+// so manual zoom stays in effect through view/date-range changes.
+function effectiveCellW(mode) {
+  const manual = manualCellWByMode[mode];
+  if (manual == null) return computeCellW(mode);
+  return Math.max(labelMinWidth(mode), manual);
+}
+function syncCellW(mode) { cellW = effectiveCellW(mode); }
+
 function setView(mode) {
   weekMode  = mode === 'week';
   monthMode = mode === 'month';
-  cellW = computeCellW(mode);
+  syncCellW(mode);
 
   document.getElementById('btnDay').classList.toggle('active',   mode === 'day');
   document.getElementById('btnWeek').classList.toggle('active',  mode === 'week');
@@ -593,13 +662,113 @@ function toggleTodayLine() {
   updateTodayLine();
 }
 
+// ── Zoom ───────────────────────────────────────────────────────────────
+// +/- nudge manualCellW by ZOOM_STEP; fit-to-width clears it back to null
+// so computeCellW() takes over again. All three go through syncCellW() so
+// the same clamping/mode-awareness applies as everywhere else cellW is set.
+//
+// The +/- ceiling is ZOOM_CELL_MAX *unless* the container is wide/columns
+// are few enough that fit-to-width would need more than that to reach full
+// width — in that case the ceiling is raised to match fitCellW(mode).
+// Without this, ZOOM_CELL_MAX stayed a flat 400px even when fit-to-width
+// (uncapped, see zoomFit) had already reached e.g. 445px: zooming out from
+// there and then back in with "+" would climb only to 400 and stop, a dead
+// zone between 400 and full width that was reachable by the fit button but
+// not by "+". Tying the ceiling to fitCellW(mode) means "+" can always
+// reach the same full width fit-to-width would give you.
+function zoomInCeiling(mode) {
+  return Math.max(ZOOM_CELL_MAX, fitCellW(mode));
+}
+function zoomIn() {
+  const mode = currentMode();
+  const base = manualCellWByMode[mode] != null ? manualCellWByMode[mode] : cellW;
+  const ceiling = zoomInCeiling(mode);
+  // Guard against ever snapping base *down*, in case base somehow already
+  // exceeds ceiling (shouldn't happen now that ceiling accounts for fit,
+  // but kept defensive — the button is disabled in that state anyway).
+  manualCellWByMode[mode] = Math.max(base, Math.min(ceiling, base + ZOOM_STEP));
+  syncCellW(mode);
+  render(); autoSave();
+}
+function zoomOut() {
+  const mode = currentMode();
+  const base = manualCellWByMode[mode] != null ? manualCellWByMode[mode] : cellW;
+  manualCellWByMode[mode] = Math.max(labelMinWidth(mode), base - ZOOM_STEP);
+  syncCellW(mode);
+  render(); autoSave();
+}
+// Width that exactly fills the container at the current column count — unlike
+// computeCellW(), this deliberately ignores CELL_MAX. CELL_MAX exists so
+// *automatic* fitting doesn't stretch columns to some huge default width;
+// but the fit-to-width button's entire purpose is filling the container on
+// request, so it must be allowed past that ceiling (still floored at
+// labelMinWidth so header labels stay legible).
+function fitCellW(mode) {
+  const container = document.getElementById('chartContainer');
+  const availW    = Math.max(0, container.clientWidth - LABEL_W);
+  const n         = numColsFor(mode);
+  const minCell   = labelMinWidth(mode);
+  const fitCell   = n > 0 ? Math.floor(availW / n) : minCell;
+  return Math.max(minCell, fitCell);
+}
+
+function zoomFit() {
+  const mode = currentMode();
+  if (!fitsWithinContainer(mode)) return; // button is disabled in this case anyway
+  // fitCellW() deliberately ignores CELL_MAX (see its comment) so it can
+  // reach true full width. It's also not clamped to ZOOM_CELL_MAX here —
+  // that ceiling exists only to stop +/- clicks from producing absurdly
+  // fat columns; fit-to-width's entire point is filling the container on
+  // request, however wide that turns out to be. effectiveCellW() no longer
+  // re-caps this either, so the stored value and the displayed width always
+  // agree (see effectiveCellW's comment for why that matters).
+  manualCellWByMode[mode] = fitCellW(mode);
+  syncCellW(mode);
+  render(); autoSave();
+}
+// Whether the chart's columns can all fit within the container at the
+// mode's *smallest* allowed column width (labelMinWidth) — i.e. whether
+// "fit to width" can actually eliminate horizontal scrolling. If even the
+// minimum zoom doesn't fit, there's no width fit() could produce that both
+// (a) fits the container and (b) is wide enough to fit every column's
+// label, so the button has nothing meaningful to do.
+function fitsWithinContainer(mode) {
+  const container = document.getElementById('chartContainer');
+  const availW     = Math.max(0, container.clientWidth - LABEL_W);
+  const n          = numColsFor(mode);
+  const minCell    = labelMinWidth(mode);
+  return n === 0 || n * minCell <= availW;
+}
+
+// Disable +/- once further zoom would have no effect (already at the
+// mode's label-width floor or its zoomInCeiling). Disable fit-to-width
+// (and explain why via the tooltip) when the chart can't fit even at the
+// smallest allowed column width.
+function updateZoomButtons() {
+  const mode = currentMode();
+  const min  = labelMinWidth(mode);
+  const val  = manualCellWByMode[mode] != null ? manualCellWByMode[mode] : cellW;
+  document.getElementById('btnZoomOut').disabled = val <= min;
+  document.getElementById('btnZoomIn').disabled  = val >= zoomInCeiling(mode);
+
+  const fitBtn = document.getElementById('btnZoomFit');
+  const canFit = fitsWithinContainer(mode);
+  fitBtn.disabled = !canFit;
+  fitBtn.title = canFit
+    ? 'Fit to width (no horizontal scroll)'
+    : 'Chart is too large to fit in this view';
+}
+
 // Recompute the fixed column width for the active view when the window
 // resizes (columns stay uniform; they just grow/shrink together).
 let _resizeRAF = null;
 window.addEventListener('resize', () => {
   if (_resizeRAF) cancelAnimationFrame(_resizeRAF);
   _resizeRAF = requestAnimationFrame(() => {
-    cellW = computeCellW(currentMode());
+    // Manual zoom is an absolute px width, so it's unaffected by container
+    // size (that's the whole point) — this recompute only changes anything
+    // when auto-fit is active.
+    syncCellW(currentMode());
     render();
   });
 });
@@ -757,6 +926,7 @@ function render() {
   updateEndZone();
   updateTodayLine();
   syncTopScrollbarWidth();
+  updateZoomButtons();
 }
 
 // ── Top scrollbar (mirrors the grid's real horizontal scroll) ─────────────
@@ -1185,7 +1355,10 @@ document.addEventListener('click', e => {
 
 // ── Chart data helpers ─────────────────────────────────────────────────
 function chartData() {
-  return { version:1, baseDate:fmtDate(baseDate), endDate: endDate ? fmtDate(endDate) : null, days: defaultDays, cellW, tasks };
+  // `zoom` is the manual override per view mode (or null for auto-fit),
+  // kept separate from `cellW`, which stays a derived/display-only value,
+  // never persisted as authoritative (see note in applyChartData).
+  return { version:1, baseDate:fmtDate(baseDate), endDate: endDate ? fmtDate(endDate) : null, days: defaultDays, cellW, zoom: manualCellWByMode, tasks };
 }
 
 function applyChartData(data) {
@@ -1200,9 +1373,26 @@ function applyChartData(data) {
     days = data.days || 30;
     defaultDays = days;
   }
-  // cellW is always derived from the current view + label widths, never
-  // trusted from a save file (an old/foreign value would just be wrong now).
-  cellW = computeCellW(currentMode());
+  // manualCellWByMode restores each view's zoom preference (missing/non-
+  // numeric = auto-fit, so older save files without a `zoom` field load
+  // exactly as before). Older save files stored one shared number instead
+  // of a per-mode object — that shared value was itself the bug this
+  // replaced, so on load it's applied only to the mode being viewed right
+  // now; the other two views start at auto-fit rather than inheriting it.
+  // cellW itself is still always *derived* (via syncCellW), never trusted
+  // directly from a save file — an old/foreign raw px value would just be
+  // wrong now.
+  if (data.zoom && typeof data.zoom === 'object') {
+    manualCellWByMode = {
+      day:   typeof data.zoom.day   === 'number' ? data.zoom.day   : null,
+      week:  typeof data.zoom.week  === 'number' ? data.zoom.week  : null,
+      month: typeof data.zoom.month === 'number' ? data.zoom.month : null,
+    };
+  } else {
+    manualCellWByMode = { day: null, week: null, month: null };
+    if (typeof data.zoom === 'number') manualCellWByMode[currentMode()] = data.zoom;
+  }
+  syncCellW(currentMode());
   nextId   = tasks.length ? Math.max(...tasks.map(t=>t.id))+1 : 1;
   startInput.value = data.baseDate;
   endInput.value   = data.endDate || '';
