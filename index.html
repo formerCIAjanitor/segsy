@@ -440,6 +440,13 @@
       </table>
       <div id="endZone" style="display:none;position:absolute;top:0;bottom:0;right:0;background:rgba(0,0,0,0.04);pointer-events:none;z-index:9;"></div>
       <div id="todayLine" style="display:none;position:absolute;top:0;bottom:0;width:2px;background:var(--accent);opacity:0.7;pointer-events:none;z-index:10;"></div>
+      <!-- Week mode only: header month-group colspans land on week-column edges
+           (see render()'s WEEK/MONTH branch), which is rarely the true calendar
+           month boundary since weeks don't reliably start on the 1st. These
+           thin lines are positioned via dayToX at the *exact* transition day,
+           independent of column edges, so the visible separator is accurate
+           even though the colspan grouping underneath it isn't. -->
+      <div id="monthSepOverlay" style="display:none;position:absolute;top:0;left:0;pointer-events:none;z-index:6;"></div>
     </div>
   </div>
   <div class="add-row" onclick="addTask()">
@@ -816,6 +823,7 @@ function render() {
   if (!weekMode && !monthMode) {
     // ── DAY MODE ─────────────────────────────────────────────────────────
     // Every column is exactly one day and exactly `cellW` wide — no scaling.
+    document.getElementById('monthSepOverlay').style.display = 'none';
 
     // Header row 1: month spans
     const head = document.getElementById('ganttHead');
@@ -888,13 +896,19 @@ function render() {
       const key = monthMode ? `${d.getFullYear()}` : `${d.getFullYear()}-${d.getMonth()}`;
       const label = monthMode ? `${d.getFullYear()}` : d.toLocaleString('default', {month:'short', year:'numeric'});
       if (!groupSpans.length || groupSpans[groupSpans.length-1].key !== key)
-        groupSpans.push({ key, label, colCount: 1 });
+        groupSpans.push({ key, label, colCount: 1, startCol: ci });
       else groupSpans[groupSpans.length-1].colCount++;
     }
     let row1 = `<tr><th class="task-col month-header" style="text-align:left;padding:3px 10px;color:var(--text-secondary);font-size:12px;font-weight:500;">Task</th>`;
     for (const gs of groupSpans) {
       const w = gs.colCount * cellW;
-      row1 += `<th class="month-header" colspan="${gs.colCount}" style="min-width:${w}px;max-width:${w}px;"><span class="month-header-label">${gs.label}</span></th>`;
+      // In week mode, this cell's right border would sit at a week-column
+      // edge, not the true month boundary — suppress it here so the exact
+      // overlay line drawn below is the only boundary indicator. Month
+      // mode's columns ARE calendar months, so its border is already exact
+      // and left as-is.
+      const borderOverride = weekMode ? 'border-right:none;' : '';
+      row1 += `<th class="month-header" colspan="${gs.colCount}" style="min-width:${w}px;max-width:${w}px;${borderOverride}"><span class="month-header-label">${gs.label}</span></th>`;
     }
     row1 += '</tr>';
 
@@ -911,6 +925,41 @@ function render() {
     }
     row2 += '</tr>';
     head.innerHTML = row1 + row2;
+
+    // Exact month-boundary overlay — week mode only. The colspan grouping
+    // above assigns each *whole* week-column to the month of its start day
+    // (see comment on groupSpans), so its boundaries land on week-column
+    // edges, not the true calendar month boundary. Rather than trying to
+    // make colspan itself land in the right place (it can't — a <th> can't
+    // be split mid-column), draw the real boundary as a separate hairline
+    // positioned by dayToX, the same way _mutedOverlayHTML/todayLine draw
+    // sub-column detail on top of the atomic week/month grid.
+    const monthSepOverlay = document.getElementById('monthSepOverlay');
+    if (weekMode && groupSpans.length > 1) {
+      const lines = [];
+      for (let g = 1; g < groupSpans.length; g++) {
+        // The transition day is necessarily inside the last column of the
+        // *previous* group — a 7-day week column can only ever contain one
+        // month's start, since no calendar month is shorter than 7 days.
+        const c = cols[groupSpans[g].startCol - 1];
+        let transitionOffset = null;
+        // <= (not <) deliberately: covers the edge case where a week starts
+        // exactly on the 1st of the new month, so the transition day is the
+        // very first day of the *next* column, not strictly inside this one.
+        for (let off = c.startDay; off <= c.startDay + c.fullSpan; off++) {
+          if (addDays(baseDate, off).getDate() === 1) { transitionOffset = off; break; }
+        }
+        if (transitionOffset === null) continue; // shouldn't happen, but skip rather than draw a wrong line
+        const x = LABEL_W + dayToX(transitionOffset);
+        lines.push(`<div style="position:absolute;top:0;bottom:0;left:${x}px;width:1px;background:var(--border-strong);"></div>`);
+      }
+      monthSepOverlay.innerHTML = lines.join('');
+      monthSepOverlay.style.height  = head.offsetHeight + 'px';
+      monthSepOverlay.style.display = lines.length ? 'block' : 'none';
+    } else {
+      monthSepOverlay.style.display = 'none';
+      monthSepOverlay.innerHTML = '';
+    }
 
     // Body: one cell per column
     const body = document.getElementById('ganttBody');
