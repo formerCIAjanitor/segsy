@@ -357,6 +357,26 @@
       transition: opacity 0.4s; pointer-events: none;
     }
 
+    /* Floating full-name label for truncated bars — see #barHoverLabel in
+       markup. Deliberately NO transition/animation: it must appear and
+       disappear the instant the mouse enters/leaves a truncated bar, unlike
+       a native title tooltip's ~500ms hover delay. display:none/flex is
+       toggled directly in JS rather than an opacity fade for that reason.
+       z-index 50: above bars(2)/today-line(10)/end-zone(9)/sticky
+       column(15) — this can float over any of them — but comfortably below
+       the color-picker popup(200) and toast(500). pointer-events:none so
+       it can never itself become a mouseout/mouseover target and interfere
+       with the very hover state that shows it. */
+    .bar-hover-label {
+      display: none;
+      position: fixed;
+      background: var(--text); color: var(--bg);
+      padding: 4px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 500; white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+      z-index: 50; pointer-events: none;
+    }
+
     footer { margin-top: 1.5rem; font-size: 12px; color: var(--text-muted); }
 
     /* Start/end/duration readout for whichever task row is currently
@@ -475,6 +495,15 @@
 <div class="task-info-bar" id="taskInfoBar">
   <span class="info-placeholder">Hover a task to see its start, end, and duration</span>
 </div>
+
+<!-- Floating full-name label for truncated bars. position:fixed + viewport
+     coordinates (same pattern the color-picker popup already relies on —
+     see project notes) so it isn't clipped by any ancestor's overflow, and
+     floats above the bar rather than inside it so the cursor (sitting on
+     the bar the user is hovering) doesn't cover the very text being
+     revealed. Single reusable node, repositioned per-hover rather than
+     created/destroyed each time. -->
+<div class="bar-hover-label" id="barHoverLabel"></div>
 
 <div id="colorPicker" class="color-picker-popup" style="display:none;"></div>
 
@@ -1215,16 +1244,88 @@ function _placeBarUnified(tr, task, totalDays) {
   bar.style.cssText = `background:${task.color};left:${leftPx}px;width:${Math.max(2, widthPx - 1)}px;`;
   startCell.appendChild(bar);
 
-  // Only show a hover tooltip when the label is actually clipped by the
-  // bar's width — scrollWidth/clientWidth only reflect real layout once
-  // the element is in the live DOM, which it now is (appended above).
-  // Note: the tooltip has to go on `bar`, not `bl` — .bar-label has
-  // pointer-events:none (so drags pass through to the bar underneath),
-  // which also means the label itself never receives the hover events
-  // a native title tooltip depends on.
+  // Flag truncated bars (label clipped by bar width) so the delegated
+  // hover handler below knows, without re-measuring, whether to show the
+  // floating full-name label. scrollWidth/clientWidth only reflect real
+  // layout once the element is in the live DOM, which it now is (appended
+  // above). Recomputed fresh on every call, including during drag (see
+  // updateBarInPlace), so it never goes stale as a bar is resized.
   const bl = bar.querySelector('.bar-label');
-  if (bl.scrollWidth > bl.clientWidth) bar.title = task.name;
+  bar.dataset.truncated = bl.scrollWidth > bl.clientWidth ? 'true' : 'false';
 }
+
+// ── Floating full-name label for truncated bars ─────────────────────────────
+// Shows the instant the cursor enters a truncated bar (no hover delay) and
+// floats a fixed gap above the bar's top edge — deliberately not inside the
+// bar or in a tooltip attached at the cursor position, both of which would
+// put the pointer directly on top of the very text being revealed (worst
+// case: hovering the ellipsis itself, which is exactly what draws the eye).
+const barHoverLabel  = document.getElementById('barHoverLabel');
+const BAR_LABEL_GAP  = 8;  // px between bar edge and the floating label
+const EDGE_MARGIN    = 8;  // px kept clear of the viewport edges when clamping
+
+function showBarHoverLabel(bar, task) {
+  barHoverLabel.textContent = task.name;
+  barHoverLabel.style.width   = '';    // clear any previous clamp-driven width — auto-size to content
+  barHoverLabel.style.display = 'block';
+
+  const barRect   = bar.getBoundingClientRect();
+  // Measured from the real rendered box (now in the DOM with its final
+  // text and auto width) rather than pre-computed via canvas text
+  // measurement + a hand-picked padding constant — that duplicated the
+  // CSS padding value in JS and, worse, double-counted it, since
+  // box-sizing is content-box here and the padding gets added on top of
+  // any width we set explicitly. Reading the box directly can't drift out
+  // of sync with the CSS the way a second hardcoded number could.
+  const labelRect = barHoverLabel.getBoundingClientRect();
+  const labelW    = labelRect.width;
+
+  // Horizontal: prefer aligning the label's left edge with the bar's, then
+  // clamp into the viewport. One clamp (rather than a separate left/right
+  // "flip" branch) handles both edge cases — a bar near the right edge,
+  // and one near the left edge — the same way. It can also never land left
+  // of the sticky task-name column, since the bar's own left edge
+  // (barRect.left) is already guaranteed to sit at or right of that column
+  // — bars only ever render inside cells to its right.
+  const maxLeft = window.innerWidth - labelW - EDGE_MARGIN;
+  const left    = Math.max(EDGE_MARGIN, Math.min(barRect.left, maxLeft));
+  barHoverLabel.style.left = `${left}px`;
+
+  // Vertical: prefer above the bar. If there isn't room (e.g. the bar is
+  // in the first data row, right under the header), flip to below instead
+  // — a clamp doesn't make sense here the way it does horizontally, since
+  // squeezing the label toward the bar would reintroduce the exact
+  // cursor-occlusion problem this feature exists to avoid.
+  const labelH = barHoverLabel.offsetHeight; // real height, now that content/width are set
+  const above  = barRect.top - BAR_LABEL_GAP - labelH;
+  if (above >= EDGE_MARGIN) {
+    barHoverLabel.style.top = `${above}px`;
+  } else {
+    barHoverLabel.style.top = `${barRect.bottom + BAR_LABEL_GAP}px`;
+  }
+}
+
+function hideBarHoverLabel() {
+  barHoverLabel.style.display = 'none';
+}
+
+// Delegated on the table (same pattern as the drag mousedown listener
+// below) so it survives render()'s full tbody rebuilds. mouseover/mouseout
+// rather than mouseenter/mouseleave, since delegation requires bubbling.
+document.getElementById('ganttTable').addEventListener('mouseover', e => {
+  const bar = e.target.closest('.bar');
+  if (!bar || bar.dataset.truncated !== 'true') return;
+  if (dragState) return; // suppress while actively dragging/resizing a bar
+  const task = tasks.find(t => t.id === +bar.dataset.id);
+  if (task) showBarHoverLabel(bar, task);
+});
+
+document.getElementById('ganttTable').addEventListener('mouseout', e => {
+  const bar = e.target.closest('.bar');
+  if (!bar) return;
+  if (bar.contains(e.relatedTarget)) return; // moved between bar's own children, not a real leave
+  hideBarHoverLabel();
+});
 
 // ── Task hover info (start / end / duration, shown below the grid) ─────────
 const taskInfoBar = document.getElementById('taskInfoBar');
@@ -1286,6 +1387,7 @@ document.getElementById('ganttTable').addEventListener('mousedown', e => {
   const bar  = e.target.closest('.bar');
   const cell = e.target.closest('.cell');
   if (bar) {
+    hideBarHoverLabel(); // don't let the floating label linger while dragging
     onBarMousedown(e, bar);
   } else if (cell) {
     onCellMousedown(e, cell);
