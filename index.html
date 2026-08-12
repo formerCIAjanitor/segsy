@@ -367,7 +367,7 @@
       margin-top: 0.6rem;
       padding: 8px 14px;
       min-height: 34px;
-      display: flex; align-items: center; gap: 1.5rem;
+      display: flex; align-items: center; gap: 0.5rem 1.5rem; flex-wrap: wrap;
       font-size: 12px; color: var(--text-secondary);
       background: var(--surface); border: 0.5px solid var(--border);
       border-radius: var(--radius);
@@ -602,6 +602,23 @@ function dayOffset(d) {
 }
 function fmtDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+// fmtDate plus a short weekday abbreviation, e.g. "2026-08-13 (Thu)" — used
+// by the hover info bar. toLocaleString('default', {weekday:'short'})
+// matches the pattern already used for month names elsewhere (see render()).
+function fmtDateDow(d) {
+  return `${fmtDate(d)} (${d.toLocaleString('default', {weekday:'short'})})`;
+}
+// Inclusive count of Mon–Fri days between start and end (both inclusive).
+// Uses the same weekend definition as the shaded grid columns elsewhere
+// (getDay()===0||getDay()===6) so the two stay consistent.
+function countWorkingDays(start, end) {
+  let n = 0;
+  for (let d = new Date(start); d <= end; d = addDays(d, 1)) {
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) n++;
+  }
+  return n;
 }
 
 const CELL_MAX  = 60;   // never grow a column wider than this even if the container is huge
@@ -1216,15 +1233,16 @@ let hoveredTaskId = null;
 function showTaskInfo(task) {
   const start = addDays(baseDate, task.start);
   const end   = addDays(baseDate, task.start + task.dur - 1); // inclusive last day
+  const workDays = countWorkingDays(start, end);
   taskInfoBar.innerHTML = '';
   const nameEl = document.createElement('span');
   nameEl.className   = 'info-name';
   nameEl.textContent = task.name; // textContent, not innerHTML — task names are user input
   taskInfoBar.appendChild(nameEl);
   [
-    `Start: ${fmtDate(start)}`,
-    `End: ${fmtDate(end)}`,
-    `Duration: ${task.dur} day${task.dur === 1 ? '' : 's'}`,
+    `Start: ${fmtDateDow(start)}`,
+    `End: ${fmtDateDow(end)}`,
+    `Duration: ${task.dur} day${task.dur === 1 ? '' : 's'} (${workDays} working day${workDays === 1 ? '' : 's'})`,
   ].forEach(text => {
     const s = document.createElement('span');
     s.textContent = text;
