@@ -359,6 +359,26 @@
 
     footer { margin-top: 1.5rem; font-size: 12px; color: var(--text-muted); }
 
+    /* Start/end/duration readout for whichever task row is currently
+       hovered — see taskInfoBar in the JS below. Fixed height (rather than
+       collapsing when empty) so the grid and footer don't jump vertically
+       as the user moves the mouse on/off rows. */
+    .task-info-bar {
+      margin-top: 0.6rem;
+      padding: 8px 14px;
+      min-height: 34px;
+      display: flex; align-items: center; gap: 1.5rem;
+      font-size: 12px; color: var(--text-secondary);
+      background: var(--surface); border: 0.5px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .task-info-bar .info-name {
+      font-weight: 600; color: var(--text);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      max-width: 260px;
+    }
+    .task-info-bar .info-placeholder { color: var(--text-muted); }
+
     .date-field {
       display: inline-flex; align-items: center;
       border: 0.5px solid var(--border-strong);
@@ -450,6 +470,10 @@
   <div class="add-row" onclick="addTask()">
     <svg class="ti" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5l0 14" /><path d="M5 12l14 0" /></svg> Add task
   </div>
+</div>
+
+<div class="task-info-bar" id="taskInfoBar">
+  <span class="info-placeholder">Hover a task to see its start, end, and duration</span>
 </div>
 
 <div id="colorPicker" class="color-picker-popup" style="display:none;"></div>
@@ -1185,6 +1209,56 @@ function _placeBarUnified(tr, task, totalDays) {
   if (bl.scrollWidth > bl.clientWidth) bar.title = task.name;
 }
 
+// ── Task hover info (start / end / duration, shown below the grid) ─────────
+const taskInfoBar = document.getElementById('taskInfoBar');
+let hoveredTaskId = null;
+
+function showTaskInfo(task) {
+  const start = addDays(baseDate, task.start);
+  const end   = addDays(baseDate, task.start + task.dur - 1); // inclusive last day
+  taskInfoBar.innerHTML = '';
+  const nameEl = document.createElement('span');
+  nameEl.className   = 'info-name';
+  nameEl.textContent = task.name; // textContent, not innerHTML — task names are user input
+  taskInfoBar.appendChild(nameEl);
+  [
+    `Start: ${fmtDate(start)}`,
+    `End: ${fmtDate(end)}`,
+    `Duration: ${task.dur} day${task.dur === 1 ? '' : 's'}`,
+  ].forEach(text => {
+    const s = document.createElement('span');
+    s.textContent = text;
+    taskInfoBar.appendChild(s);
+  });
+}
+
+function clearTaskInfo() {
+  taskInfoBar.innerHTML = '<span class="info-placeholder">Hover a task to see its start, end, and duration</span>';
+}
+
+// Delegated on the (stable) tbody element rather than individual rows, so
+// this one-time listener survives render()'s full tbody.innerHTML rebuilds.
+document.getElementById('ganttBody').addEventListener('mouseover', e => {
+  const row = e.target.closest('tr[data-id]');
+  if (!row) return;
+  const id = +row.dataset.id;
+  if (id === hoveredTaskId) return; // already showing this row, avoid redundant rebuild
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+  hoveredTaskId = id;
+  showTaskInfo(task);
+});
+
+document.getElementById('ganttBody').addEventListener('mouseout', e => {
+  const row = e.target.closest('tr[data-id]');
+  if (!row) return;
+  // mouseout also fires when moving between two child cells of the same
+  // row — only actually clear once the pointer leaves the row itself.
+  if (row.contains(e.relatedTarget)) return;
+  hoveredTaskId = null;
+  clearTaskInfo();
+});
+
 // ── Bar drag & resize (delegated) ─────────────────────────────────────────
 let dragState = null;
 
@@ -1270,6 +1344,10 @@ function updateBarInPlace(task) {
   if (existingBar) existingBar.remove();
 
   _placeBarUnified(row, task, days);
+
+  // Keep the hover info bar live while dragging/resizing this task — without
+  // this it would show stale dates until the mouse re-enters the row.
+  if (hoveredTaskId === task.id) showTaskInfo(task);
 }
 
 // Recompute week columns for the current baseDate/days (mirrors the logic in render())
