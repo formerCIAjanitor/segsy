@@ -23,6 +23,8 @@ Rejoice! Now there is _Simple Elegant Gantt Solution for You 9000 Ultra Professi
 - **Zoom** — select either the day, week or month view
 - **Export as a PNG** — save your Gantt charts as PNG
 - **Save/Load** — save and share chart as JSON
+- **Task info on hover** — place your mouse over a task to have its start and end dates as well as its duration displayed below the chart
+- **Current day indicator** — toggle a vertical bar that indicates the current day on your chart
 - **Dark mode** — automatically follows your system preference
 - **Certified Y2K compliant**
 
