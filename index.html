@@ -1173,6 +1173,16 @@ function _placeBarUnified(tr, task, totalDays) {
   const bar = _makeBar(task, 0, 0);
   bar.style.cssText = `background:${task.color};left:${leftPx}px;width:${Math.max(2, widthPx - 1)}px;`;
   startCell.appendChild(bar);
+
+  // Only show a hover tooltip when the label is actually clipped by the
+  // bar's width — scrollWidth/clientWidth only reflect real layout once
+  // the element is in the live DOM, which it now is (appended above).
+  // Note: the tooltip has to go on `bar`, not `bl` — .bar-label has
+  // pointer-events:none (so drags pass through to the bar underneath),
+  // which also means the label itself never receives the hover events
+  // a native title tooltip depends on.
+  const bl = bar.querySelector('.bar-label');
+  if (bl.scrollWidth > bl.clientWidth) bar.title = task.name;
 }
 
 // ── Bar drag & resize (delegated) ─────────────────────────────────────────

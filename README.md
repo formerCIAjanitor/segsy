@@ -5,7 +5,7 @@
 
 ## Overview
 
-[Segsy](https://formerciajanitor.github.io/segsy/) is a lightweight, interactive Gantt chart editor that runs entirely in the browser.
+[Segsy](https://formerciajanitor.github.io/segsy/) is a lightweight, interactive Gantt chart editor that runs entirely in the browser,with everything contained in a single HTML file that you can download and use completely offline.
 
 Many Gantt chart applications are overly complex and impractical for quickly creating simple project plans.
 Rejoice! Now there is _Simple Elegant Gantt Solution for You 9000 Ultra Professional Platinum Edition Deluxe (SEGSY 9000 UPPED),_ or simply _SEGSY_.
@@ -16,9 +16,7 @@ Rejoice! Now there is _Simple Elegant Gantt Solution for You 9000 Ultra Professi
 
 ## Features
 
-- **Drag to move** — grab any bar and slide it left or right along the timeline
-- **Drag to resize** — pull the left or right edge of a bar to change its start or end date
-- **Drag to reorder** — use the grip handle on the left to drag rows up or down
+- **Drag to move, resize and reorder** — grab any bar and slide it left or right along the timeline, pull the left or right edge of a bar to change its start or end date or use the grip handle on the left to drag rows up or down
 - **Rename tasks** — click any task name to edit it inline
 - **Delete tasks** — right-click a task label and confirm
 - **Color picker** — click the color dot next to a task name to change its color
@@ -33,11 +31,11 @@ Rejoice! Now there is _Simple Elegant Gantt Solution for You 9000 Ultra Professi
 | Action | How |
 | --- | --- |
 | **Auto-save** | Every change is silently saved to your browser's local storage. Closing and reopening the tab restores your work automatically. |
-| **Save JSON** | Downloads a `gantt.json` file you can share with others. |
+| **Save JSON** | Downloads a `gantt.json` file that can be used to save or share the Gantt chart. |
 | **Load JSON** | Loads a previously saved `gantt.json` file, restoring the chart exactly. |
 | **Export PNG** | Downloads a high-resolution PNG. |
 
-Saved charts are plain JSON, making them easy to read, edit by hand, or track in Git. I assume at least one person, possibly three, will appreciate this.
+Saved charts are stored as plain JSON, making them easy to read, edit by hand or track with Git (although I am not sure why you would want to do that).
 
 ```json
 {
@@ -59,7 +57,7 @@ Saved charts are plain JSON, making them easy to read, edit by hand, or track in
 
 - No milestones
 - No collaborative editing
-- No task dependencies (yet)
+- No task dependencies
 
 ## Already adopted by (or likely soon-to-be adopted by)
 
