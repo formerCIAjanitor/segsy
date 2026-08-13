@@ -29,7 +29,7 @@ Rejoice! Now there is _Simple Elegant Gantt Solution for You 9000 Ultra Professi
 - **Drag to move, resize and reorder** — grab any bar and slide it left or right along the timeline, pull the left or right edge of a bar to change its start or end date or use the grip handle on the left to drag rows up or down
 - **Rename tasks** — click any task name to edit it inline
 - **Delete tasks** — right-click a task label and confirm
-- **Color picker** — click the color dot next to a task name to choose from 9 named colors
+- **Color picker** — click the color dot next to a task name to choose from 9 predefined named colors, or select any custom color
 - **Zoom** — switch between day, week or month view, zoom in/out freely, or hit fit-to-width to eliminate horizontal scrolling; each view remembers its own zoom level
 - **Task info on hover** — hover a task to see its start date, end date and duration below the chart
 - **Current day indicator** — toggle a vertical line marking today on the chart
