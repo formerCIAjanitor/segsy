@@ -1,30 +1,41 @@
-<p align="center" style="margin-bottom: 0;">
-  <img src="./logo.png" width="128" alt="SEGSY logo">
-</p>
+<h1 align="center" style="margin:0;">
+<img src="logo.png" alt="Segsy logo" width="128">
+</h1>
+<h3 align="center" style="margin: 0; margin-top: 0;">
+Segsy — it's either that or using Excel after it finishes its 1.9 GB update
+</h3>
 
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#limitations">Limitations</a> •
+<a href="#already-adopted-by-or-likely-soon-to-be-adopted-by">Adopted by</a> •
+  <a href="#license">License</a>
+</p>
 
 ## Overview
 
 [Segsy](https://formerciajanitor.github.io/segsy/) is a lightweight, interactive Gantt chart editor that runs entirely in the browser,with everything contained in a single HTML file that you can download and use completely offline.
+No install, no dependencies.
 
 Many Gantt chart applications are overly complex and impractical for quickly creating simple project plans.
 Rejoice! Now there is _Simple Elegant Gantt Solution for You 9000 Ultra Professional Platinum Edition Deluxe (SEGSY 9000 UPPED),_ or simply _SEGSY_.
 
-[Create clean, readable Gantt charts with minimal effort now !](https://formerciajanitor.github.io/segsy/) 
-
-![Gantt chart screenshot](./screenshot.png)
+<a href="https://formerciajanitor.github.io/segsy/">
+  <img src="./screenshot.png" alt="Gantt chart screenshot" title="Launch Segsy!">
+</a>
 
 ## Features
 
 - **Drag to move, resize and reorder** — grab any bar and slide it left or right along the timeline, pull the left or right edge of a bar to change its start or end date or use the grip handle on the left to drag rows up or down
 - **Rename tasks** — click any task name to edit it inline
 - **Delete tasks** — right-click a task label and confirm
-- **Color picker** — click the color dot next to a task name to change its color
-- **Zoom** — select either the day, week or month view
-- **Export as a PNG** — save your Gantt charts as PNG
-- **Save/Load** — save and share chart as JSON
-- **Task info on hover** — place your mouse over a task to have its start and end dates as well as its duration displayed below the chart
-- **Current day indicator** — toggle a vertical bar that indicates the current day on your chart
+- **Color picker** — click the color dot next to a task name to choose from 9 named colors
+- **Zoom** — switch between day, week or month view, zoom in/out freely, or hit fit-to-width to eliminate horizontal scrolling; each view remembers its own zoom level
+- **Task info on hover** — hover a task to see its start date, end date and duration below the chart
+- **Current day indicator** — toggle a vertical line marking today on the chart
+- **Auto-save** — every change is silently saved to your browser's local storage, so closing and reopening the tab restores your work
+- **Export as a PNG** — save your Gantt chart as a high-resolution image
+- **Save/Load** — save and share a chart as a single JSON file
 - **Dark mode** — automatically follows your system preference
 - **Certified Y2K compliant**
 
