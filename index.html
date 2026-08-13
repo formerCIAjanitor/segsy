@@ -349,6 +349,30 @@
     .color-swatch:hover  { transform: scale(1.15); }
     .color-swatch.active { border-color: var(--text); }
 
+    .color-picker-divider {
+      width: 100%; height: 0; border-top: 0.5px solid var(--border-strong);
+      margin: 2px 0;
+    }
+
+    /* Custom-color trigger: a rainbow swatch that always stays visible as
+       a "more colors" affordance, with a real <input type="color"> layered
+       on top (invisible) to actually capture the click and open the OS
+       color picker. The picker panel itself is OS-rendered and can't be
+       themed — only this trigger can. */
+    .custom-color-swatch {
+      position: relative;
+      width: 22px; height: 22px; border-radius: 50%;
+      border: 2px solid var(--border-strong); cursor: pointer;
+      background: conic-gradient(red,#ff0,lime,cyan,blue,magenta,red);
+      transition: border-color 0.1s, transform 0.1s;
+    }
+    .custom-color-swatch:hover  { transform: scale(1.15); }
+    .custom-color-swatch.active { border-color: var(--text); }
+    .custom-color-swatch input[type="color"] {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      opacity: 0; cursor: pointer; border: none; padding: 0;
+    }
+
     .toast {
       position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
       background: var(--text); color: var(--bg);
@@ -1625,9 +1649,16 @@ function showColorPicker(taskId, anchor) {
   colorTarget = taskId;
   const picker = document.getElementById('colorPicker');
   const task   = tasks.find(x=>x.id===taskId);
+  const isCustom = task && !COLORS.includes(task.color);
+
   picker.innerHTML = COLORS.map((c,i) =>
     `<div class="color-swatch${task&&task.color===c?' active':''}" style="background:${c}" title="${COLOR_NAMES[i]}" data-color="${c}"></div>`
-  ).join('');
+  ).join('')
+    + `<div class="color-picker-divider"></div>`
+    + `<label class="custom-color-swatch${isCustom?' active':''}" title="Custom color">`
+    +   `<input type="color" id="customColorInput" value="${task?task.color:'#378ADD'}" />`
+    + `</label>`;
+
   picker.querySelectorAll('.color-swatch').forEach(s => {
     s.addEventListener('click', () => {
       const t=tasks.find(x=>x.id===colorTarget);
@@ -1635,6 +1666,20 @@ function showColorPicker(taskId, anchor) {
       picker.style.display='none'; render(); autoSave();
     });
   });
+
+  // Native picker fires 'input' continuously while dragging inside the OS
+  // panel (live preview) and 'change' once the user commits/closes it.
+  const customInput = picker.querySelector('#customColorInput');
+  customInput.addEventListener('input', () => {
+    const t = tasks.find(x=>x.id===colorTarget);
+    if (t) t.color = customInput.value;
+    render();
+  });
+  customInput.addEventListener('change', () => {
+    picker.style.display='none';
+    autoSave();
+  });
+
   const rect = anchor.getBoundingClientRect();
   picker.style.cssText=`display:flex;top:${rect.bottom+4+window.scrollY}px;left:${rect.left+window.scrollX}px;`;
 }

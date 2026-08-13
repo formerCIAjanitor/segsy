@@ -20,7 +20,7 @@ No install, no dependencies.
 Many Gantt chart applications are overly complex and impractical for quickly creating simple project plans.
 Rejoice! Now there is _Simple Elegant Gantt Solution for You 9000 Ultra Professional Platinum Edition Deluxe (SEGSY 9000 UPPED),_ or simply _SEGSY_.
 
-<a href="https://formerciajanitor.github.io/segsy/">
+'<a href="https://formerciajanitor.github.io/segsy/">
   <img src="./screenshot.png" alt="Gantt chart screenshot" title="Launch Segsy!">
 </a>
 
