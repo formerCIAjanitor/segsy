@@ -331,6 +331,24 @@
 
     .add-row:hover { background: var(--accent-bg); color: var(--accent); }
 
+    .export-dropdown { position: relative; display: inline-flex; }
+
+    .export-menu {
+      position: fixed; z-index: 200; display: none;
+      flex-direction: column; gap: 2px;
+      background: var(--surface);
+      border: 0.5px solid var(--border-strong);
+      border-radius: var(--radius);
+      padding: 4px;
+      min-width: 110px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.14);
+    }
+    .export-menu button {
+      border: none; background: transparent;
+      justify-content: flex-start; padding: 6px 10px; border-radius: 6px;
+    }
+    .export-menu button:hover { background: var(--surface-alt); }
+
     .color-picker-popup {
       position: fixed; z-index: 200;
       background: var(--surface);
@@ -349,56 +367,12 @@
     .color-swatch:hover  { transform: scale(1.15); }
     .color-swatch.active { border-color: var(--text); }
 
-    .color-picker-divider {
-      width: 100%; height: 0; border-top: 0.5px solid var(--border-strong);
-      margin: 2px 0;
-    }
-
-    /* Custom-color trigger: a rainbow swatch that always stays visible as
-       a "more colors" affordance, with a real <input type="color"> layered
-       on top (invisible) to actually capture the click and open the OS
-       color picker. The picker panel itself is OS-rendered and can't be
-       themed — only this trigger can. */
-    .custom-color-swatch {
-      position: relative;
-      width: 22px; height: 22px; border-radius: 50%;
-      border: 2px solid var(--border-strong); cursor: pointer;
-      background: conic-gradient(red,#ff0,lime,cyan,blue,magenta,red);
-      transition: border-color 0.1s, transform 0.1s;
-    }
-    .custom-color-swatch:hover  { transform: scale(1.15); }
-    .custom-color-swatch.active { border-color: var(--text); }
-    .custom-color-swatch input[type="color"] {
-      position: absolute; inset: 0; width: 100%; height: 100%;
-      opacity: 0; cursor: pointer; border: none; padding: 0;
-    }
-
     .toast {
       position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
       background: var(--text); color: var(--bg);
       padding: 8px 16px; border-radius: var(--radius);
       font-size: 13px; z-index: 500;
       transition: opacity 0.4s; pointer-events: none;
-    }
-
-    /* Floating full-name label for truncated bars — see #barHoverLabel in
-       markup. Deliberately NO transition/animation: it must appear and
-       disappear the instant the mouse enters/leaves a truncated bar, unlike
-       a native title tooltip's ~500ms hover delay. display:none/flex is
-       toggled directly in JS rather than an opacity fade for that reason.
-       z-index 50: above bars(2)/today-line(10)/end-zone(9)/sticky
-       column(15) — this can float over any of them — but comfortably below
-       the color-picker popup(200) and toast(500). pointer-events:none so
-       it can never itself become a mouseout/mouseover target and interfere
-       with the very hover state that shows it. */
-    .bar-hover-label {
-      display: none;
-      position: fixed;
-      background: var(--text); color: var(--bg);
-      padding: 4px 8px; border-radius: 4px;
-      font-size: 11px; font-weight: 500; white-space: nowrap;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
-      z-index: 50; pointer-events: none;
     }
 
     footer { margin-top: 1.5rem; font-size: 12px; color: var(--text-muted); }
@@ -411,7 +385,7 @@
       margin-top: 0.6rem;
       padding: 8px 14px;
       min-height: 34px;
-      display: flex; align-items: center; gap: 0.5rem 1.5rem; flex-wrap: wrap;
+      display: flex; align-items: center; gap: 1.5rem;
       font-size: 12px; color: var(--text-secondary);
       background: var(--surface); border: 0.5px solid var(--border);
       border-radius: var(--radius);
@@ -490,7 +464,13 @@
     <button id="btnTodayLine" onclick="toggleTodayLine()" class="toggle-btn active" title="Show/hide the today line">
       Today line
     </button>
-    <button onclick="exportPNG()"><svg class="ti" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 8h.01" /><path d="M12.5 21h-6.5a3 3 0 0 1 -3 -3v-12a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v6.5" /><path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l4 4" /><path d="M14 14l1 -1c.653 -.629 1.413 -.815 2.13 -.559" /><path d="M19 16v6" /><path d="M22 19l-3 3l-3 -3" /></svg> Export PNG</button>
+    <div class="export-dropdown">
+      <button id="btnExport" onclick="toggleExportMenu(event)"><svg class="ti" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 8h.01" /><path d="M12.5 21h-6.5a3 3 0 0 1 -3 -3v-12a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v6.5" /><path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l4 4" /><path d="M14 14l1 -1c.653 -.629 1.413 -.815 2.13 -.559" /><path d="M19 16v6" /><path d="M22 19l-3 3l-3 -3" /></svg> Export <svg class="ti" aria-hidden="true" style="width:0.7em;height:0.7em;margin-left:-3px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6l6 -6" /></svg></button>
+      <div class="export-menu" id="exportMenu">
+        <button onclick="exportPNG(); closeExportMenu();">PNG</button>
+        <button onclick="exportPDF(); closeExportMenu();">PDF</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -519,15 +499,6 @@
 <div class="task-info-bar" id="taskInfoBar">
   <span class="info-placeholder">Hover a task to see its start, end, and duration</span>
 </div>
-
-<!-- Floating full-name label for truncated bars. position:fixed + viewport
-     coordinates (same pattern the color-picker popup already relies on —
-     see project notes) so it isn't clipped by any ancestor's overflow, and
-     floats above the bar rather than inside it so the cursor (sitting on
-     the bar the user is hovering) doesn't cover the very text being
-     revealed. Single reusable node, repositioned per-hover rather than
-     created/destroyed each time. -->
-<div class="bar-hover-label" id="barHoverLabel"></div>
 
 <div id="colorPicker" class="color-picker-popup" style="display:none;"></div>
 
@@ -655,23 +626,6 @@ function dayOffset(d) {
 }
 function fmtDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
-// fmtDate plus a short weekday abbreviation, e.g. "2026-08-13 (Thu)" — used
-// by the hover info bar. toLocaleString('default', {weekday:'short'})
-// matches the pattern already used for month names elsewhere (see render()).
-function fmtDateDow(d) {
-  return `${fmtDate(d)} (${d.toLocaleString('default', {weekday:'short'})})`;
-}
-// Inclusive count of Mon–Fri days between start and end (both inclusive).
-// Uses the same weekend definition as the shaded grid columns elsewhere
-// (getDay()===0||getDay()===6) so the two stay consistent.
-function countWorkingDays(start, end) {
-  let n = 0;
-  for (let d = new Date(start); d <= end; d = addDays(d, 1)) {
-    const dow = d.getDay();
-    if (dow !== 0 && dow !== 6) n++;
-  }
-  return n;
 }
 
 const CELL_MAX  = 60;   // never grow a column wider than this even if the container is huge
@@ -1268,88 +1222,16 @@ function _placeBarUnified(tr, task, totalDays) {
   bar.style.cssText = `background:${task.color};left:${leftPx}px;width:${Math.max(2, widthPx - 1)}px;`;
   startCell.appendChild(bar);
 
-  // Flag truncated bars (label clipped by bar width) so the delegated
-  // hover handler below knows, without re-measuring, whether to show the
-  // floating full-name label. scrollWidth/clientWidth only reflect real
-  // layout once the element is in the live DOM, which it now is (appended
-  // above). Recomputed fresh on every call, including during drag (see
-  // updateBarInPlace), so it never goes stale as a bar is resized.
+  // Only show a hover tooltip when the label is actually clipped by the
+  // bar's width — scrollWidth/clientWidth only reflect real layout once
+  // the element is in the live DOM, which it now is (appended above).
+  // Note: the tooltip has to go on `bar`, not `bl` — .bar-label has
+  // pointer-events:none (so drags pass through to the bar underneath),
+  // which also means the label itself never receives the hover events
+  // a native title tooltip depends on.
   const bl = bar.querySelector('.bar-label');
-  bar.dataset.truncated = bl.scrollWidth > bl.clientWidth ? 'true' : 'false';
+  if (bl.scrollWidth > bl.clientWidth) bar.title = task.name;
 }
-
-// ── Floating full-name label for truncated bars ─────────────────────────────
-// Shows the instant the cursor enters a truncated bar (no hover delay) and
-// floats a fixed gap above the bar's top edge — deliberately not inside the
-// bar or in a tooltip attached at the cursor position, both of which would
-// put the pointer directly on top of the very text being revealed (worst
-// case: hovering the ellipsis itself, which is exactly what draws the eye).
-const barHoverLabel  = document.getElementById('barHoverLabel');
-const BAR_LABEL_GAP  = 8;  // px between bar edge and the floating label
-const EDGE_MARGIN    = 8;  // px kept clear of the viewport edges when clamping
-
-function showBarHoverLabel(bar, task) {
-  barHoverLabel.textContent = task.name;
-  barHoverLabel.style.width   = '';    // clear any previous clamp-driven width — auto-size to content
-  barHoverLabel.style.display = 'block';
-
-  const barRect   = bar.getBoundingClientRect();
-  // Measured from the real rendered box (now in the DOM with its final
-  // text and auto width) rather than pre-computed via canvas text
-  // measurement + a hand-picked padding constant — that duplicated the
-  // CSS padding value in JS and, worse, double-counted it, since
-  // box-sizing is content-box here and the padding gets added on top of
-  // any width we set explicitly. Reading the box directly can't drift out
-  // of sync with the CSS the way a second hardcoded number could.
-  const labelRect = barHoverLabel.getBoundingClientRect();
-  const labelW    = labelRect.width;
-
-  // Horizontal: prefer aligning the label's left edge with the bar's, then
-  // clamp into the viewport. One clamp (rather than a separate left/right
-  // "flip" branch) handles both edge cases — a bar near the right edge,
-  // and one near the left edge — the same way. It can also never land left
-  // of the sticky task-name column, since the bar's own left edge
-  // (barRect.left) is already guaranteed to sit at or right of that column
-  // — bars only ever render inside cells to its right.
-  const maxLeft = window.innerWidth - labelW - EDGE_MARGIN;
-  const left    = Math.max(EDGE_MARGIN, Math.min(barRect.left, maxLeft));
-  barHoverLabel.style.left = `${left}px`;
-
-  // Vertical: prefer above the bar. If there isn't room (e.g. the bar is
-  // in the first data row, right under the header), flip to below instead
-  // — a clamp doesn't make sense here the way it does horizontally, since
-  // squeezing the label toward the bar would reintroduce the exact
-  // cursor-occlusion problem this feature exists to avoid.
-  const labelH = barHoverLabel.offsetHeight; // real height, now that content/width are set
-  const above  = barRect.top - BAR_LABEL_GAP - labelH;
-  if (above >= EDGE_MARGIN) {
-    barHoverLabel.style.top = `${above}px`;
-  } else {
-    barHoverLabel.style.top = `${barRect.bottom + BAR_LABEL_GAP}px`;
-  }
-}
-
-function hideBarHoverLabel() {
-  barHoverLabel.style.display = 'none';
-}
-
-// Delegated on the table (same pattern as the drag mousedown listener
-// below) so it survives render()'s full tbody rebuilds. mouseover/mouseout
-// rather than mouseenter/mouseleave, since delegation requires bubbling.
-document.getElementById('ganttTable').addEventListener('mouseover', e => {
-  const bar = e.target.closest('.bar');
-  if (!bar || bar.dataset.truncated !== 'true') return;
-  if (dragState) return; // suppress while actively dragging/resizing a bar
-  const task = tasks.find(t => t.id === +bar.dataset.id);
-  if (task) showBarHoverLabel(bar, task);
-});
-
-document.getElementById('ganttTable').addEventListener('mouseout', e => {
-  const bar = e.target.closest('.bar');
-  if (!bar) return;
-  if (bar.contains(e.relatedTarget)) return; // moved between bar's own children, not a real leave
-  hideBarHoverLabel();
-});
 
 // ── Task hover info (start / end / duration, shown below the grid) ─────────
 const taskInfoBar = document.getElementById('taskInfoBar');
@@ -1358,16 +1240,15 @@ let hoveredTaskId = null;
 function showTaskInfo(task) {
   const start = addDays(baseDate, task.start);
   const end   = addDays(baseDate, task.start + task.dur - 1); // inclusive last day
-  const workDays = countWorkingDays(start, end);
   taskInfoBar.innerHTML = '';
   const nameEl = document.createElement('span');
   nameEl.className   = 'info-name';
   nameEl.textContent = task.name; // textContent, not innerHTML — task names are user input
   taskInfoBar.appendChild(nameEl);
   [
-    `Start: ${fmtDateDow(start)}`,
-    `End: ${fmtDateDow(end)}`,
-    `Duration: ${task.dur} day${task.dur === 1 ? '' : 's'} (${workDays} working day${workDays === 1 ? '' : 's'})`,
+    `Start: ${fmtDate(start)}`,
+    `End: ${fmtDate(end)}`,
+    `Duration: ${task.dur} day${task.dur === 1 ? '' : 's'}`,
   ].forEach(text => {
     const s = document.createElement('span');
     s.textContent = text;
@@ -1411,7 +1292,6 @@ document.getElementById('ganttTable').addEventListener('mousedown', e => {
   const bar  = e.target.closest('.bar');
   const cell = e.target.closest('.cell');
   if (bar) {
-    hideBarHoverLabel(); // don't let the floating label linger while dragging
     onBarMousedown(e, bar);
   } else if (cell) {
     onCellMousedown(e, cell);
@@ -1649,16 +1529,9 @@ function showColorPicker(taskId, anchor) {
   colorTarget = taskId;
   const picker = document.getElementById('colorPicker');
   const task   = tasks.find(x=>x.id===taskId);
-  const isCustom = task && !COLORS.includes(task.color);
-
   picker.innerHTML = COLORS.map((c,i) =>
     `<div class="color-swatch${task&&task.color===c?' active':''}" style="background:${c}" title="${COLOR_NAMES[i]}" data-color="${c}"></div>`
-  ).join('')
-    + `<div class="color-picker-divider"></div>`
-    + `<label class="custom-color-swatch${isCustom?' active':''}" title="Custom color">`
-    +   `<input type="color" id="customColorInput" value="${task?task.color:'#378ADD'}" />`
-    + `</label>`;
-
+  ).join('');
   picker.querySelectorAll('.color-swatch').forEach(s => {
     s.addEventListener('click', () => {
       const t=tasks.find(x=>x.id===colorTarget);
@@ -1666,20 +1539,6 @@ function showColorPicker(taskId, anchor) {
       picker.style.display='none'; render(); autoSave();
     });
   });
-
-  // Native picker fires 'input' continuously while dragging inside the OS
-  // panel (live preview) and 'change' once the user commits/closes it.
-  const customInput = picker.querySelector('#customColorInput');
-  customInput.addEventListener('input', () => {
-    const t = tasks.find(x=>x.id===colorTarget);
-    if (t) t.color = customInput.value;
-    render();
-  });
-  customInput.addEventListener('change', () => {
-    picker.style.display='none';
-    autoSave();
-  });
-
   const rect = anchor.getBoundingClientRect();
   picker.style.cssText=`display:flex;top:${rect.bottom+4+window.scrollY}px;left:${rect.left+window.scrollX}px;`;
 }
@@ -1755,12 +1614,20 @@ function downloadJSON() {
 // ── Load JSON from file ────────────────────────────────────────────────
 function triggerLoad() { document.getElementById('fileInput').click(); }
 
-// ── Export PNG ─────────────────────────────────────────────────────────
+// ── Chart canvas rendering (shared by PNG + PDF export) ──────────────────
 // Mirrors whatever's on screen: reuses getWeekCols/getMonthCols for column
 // layout and dayToX for bar placement — the same functions render() and
-// dragging use — so the exported image can't drift out of sync with the
-// current view (day/week/month), zoom, or date range.
-function exportPNG() {
+// dragging use — so exports can't drift out of sync with the current view
+// (day/week/month), zoom, or date range.
+//
+// Built with { alpha: false } on purpose: the whole canvas is opaque (the
+// background fill below covers every pixel), and an alpha-less canvas is
+// what lets toDataURL('image/png') emit color-type-2 (plain RGB, no alpha
+// plane) PNG data — which canvasToSinglePagePDF depends on so it can embed
+// the PNG's already-compressed pixel stream directly as a PDF image XObject
+// without decoding/recompressing anything. Don't drop this option without
+// updating that function too.
+function renderChartCanvas() {
   const DPR     = 2;
   const ROW_H   = 36;
   const LABEL_W = 160;
@@ -1776,7 +1643,7 @@ function exportPNG() {
 
   const canvas  = document.createElement('canvas');
   canvas.width  = W*DPR; canvas.height = H*DPR;
-  const ctx     = canvas.getContext('2d');
+  const ctx     = canvas.getContext('2d', { alpha: false });
   ctx.scale(DPR,DPR);
 
   const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -1946,9 +1813,231 @@ function exportPNG() {
   ctx.strokeStyle=dark?'rgba(255,255,255,0.15)':'rgba(0,0,0,0.15)'; ctx.lineWidth=1;
   ctx.strokeRect(0,0,W,H);
 
+  // Stash logical (CSS-pixel, pre-DPR) size for consumers — canvasToSinglePagePDF
+  // sizes the PDF page off this, not off canvas.width/height, so the page comes
+  // out matching what's on screen rather than the 2x-oversampled pixel grid.
+  canvas._logicalW = W; canvas._logicalH = H;
+  return canvas;
+}
+
+// ── Export PNG ─────────────────────────────────────────────────────────
+function exportPNG() {
+  const canvas = renderChartCanvas();
   const a=document.createElement('a');
   a.href=canvas.toDataURL('image/png'); a.download='gantt.png'; a.click();
+  showToast('PNG downloaded');
 }
+
+// ── Export PDF ────────────────────────────────────────────────────────
+// No PDF library: a PNG's IDAT payload is a zlib stream (RFC 1950), the
+// same format PDF's /FlateDecode expects, so ideally we'd drop it straight
+// into a hand-built PDF as an image XObject with zero re-encoding.
+// That zero-copy path only works for color-type-2 (plain RGB) PNG data,
+// though — and while renderChartCanvas asks for a non-alpha canvas via
+// { alpha:false } specifically to get that, testing in real headless
+// Chromium showed some engines encode RGBA (color-type 6) regardless of
+// that hint. So: use the fast zero-copy path when we get RGB, and fall back
+// to inflating, stripping the alpha plane via PNG scanline unfiltering, and
+// re-deflating as plain RGB (via the browser's native
+// Compression/DecompressionStream — no bundled zlib) when we don't.
+async function exportPDF() {
+  const canvas = renderChartCanvas();
+  let blob;
+  try {
+    blob = await canvasToSinglePagePDF(canvas);
+  } catch (err) {
+    console.error('PDF export failed:', err);
+    showToast('PDF export failed — try Export PNG instead');
+    return;
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'gantt.pdf'; a.click();
+  URL.revokeObjectURL(url);
+  showToast('PDF downloaded');
+}
+
+// Undoes PNG's per-scanline filtering (spec filter types 0–4) to recover
+// raw pixel bytes. Needed only for the RGBA fallback path above — the
+// zero-copy RGB path never has to look inside the compressed data at all.
+function unfilterPNGScanlines(filtered, width, height, bpp) {
+  const stride = width * bpp;
+  const raw = new Uint8Array(height * stride);
+  let fi = 0;
+  for (let y = 0; y < height; y++) {
+    const filterType = filtered[fi++];
+    const rowStart = y * stride;
+    for (let x = 0; x < stride; x++) {
+      const f = filtered[fi + x];
+      const a = x >= bpp ? raw[rowStart + x - bpp] : 0;             // left
+      const b = y > 0 ? raw[rowStart - stride + x] : 0;             // up
+      const c = (y > 0 && x >= bpp) ? raw[rowStart - stride + x - bpp] : 0; // upper-left
+      let val;
+      switch (filterType) {
+        case 0: val = f; break;
+        case 1: val = (f + a) & 0xff; break;
+        case 2: val = (f + b) & 0xff; break;
+        case 3: val = (f + ((a + b) >> 1)) & 0xff; break;
+        case 4: {
+          const p = a + b - c;
+          const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+          const pr = (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c);
+          val = (f + pr) & 0xff;
+          break;
+        }
+        default: throw new Error('Unknown PNG filter type ' + filterType);
+      }
+      raw[rowStart + x] = val;
+    }
+    fi += stride;
+  }
+  return raw;
+}
+
+function stripAlphaChannel(rgba, width, height) {
+  const out = new Uint8Array(width * height * 3);
+  for (let i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
+    out[j] = rgba[i]; out[j+1] = rgba[i+1]; out[j+2] = rgba[i+2];
+  }
+  return out;
+}
+
+// Wraps native CompressionStream/DecompressionStream ('deflate' = zlib/RFC
+// 1950 framing, matching both PNG's IDAT format and PDF's /FlateDecode) so
+// the rest of the code can just await bytes in, bytes out.
+async function pipeThroughStream(stream, bytes) {
+  const writer = stream.writable.getWriter();
+  writer.write(bytes); writer.close();
+  const reader = stream.readable.getReader();
+  const chunks = []; let total = 0;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    chunks.push(value); total += value.length;
+  }
+  const out = new Uint8Array(total);
+  let o = 0; for (const c of chunks) { out.set(c, o); o += c.length; }
+  return out;
+}
+const inflateBytes = bytes => pipeThroughStream(new DecompressionStream('deflate'), bytes);
+const deflateBytes = bytes => pipeThroughStream(new CompressionStream('deflate'), bytes);
+
+async function canvasToSinglePagePDF(canvas) {
+  const png = parsePNGForPDF(canvas.toDataURL('image/png'));
+  if (png.bitDepth !== 8 || (png.colorType !== 2 && png.colorType !== 6))
+    throw new Error(`Unexpected PNG format for PDF embedding (bitDepth=${png.bitDepth}, colorType=${png.colorType})`);
+
+  let imageBytes, decodeParms;
+  if (png.colorType === 2) {
+    // Already plain RGB — reuse the compressed bytes verbatim. Predictor 15
+    // tells the PDF reader to undo whichever of PNG's 5 row filters the
+    // encoder chose per scanline, so it doesn't matter which ones were used.
+    imageBytes  = png.idat;
+    decodeParms = ` /DecodeParms << /Predictor 15 /Colors 3 /BitsPerComponent 8 /Columns ${png.width} >>`;
+  } else {
+    const filtered = await inflateBytes(png.idat);
+    const raw      = unfilterPNGScanlines(filtered, png.width, png.height, 4);
+    const rgb      = stripAlphaChannel(raw, png.width, png.height);
+    imageBytes  = await deflateBytes(rgb);
+    decodeParms = ''; // freshly deflated, no PNG-style row filtering to undo
+  }
+
+  // Page size in points (72/in), derived from CSS-pixel size at the
+  // standard 96/in browser reference, so the printed page comes out at the
+  // chart's on-screen physical size rather than sized off raw pixel counts
+  // (the canvas itself is rendered at 2x those pixel dimensions for
+  // crispness — see DPR in renderChartCanvas — which is why we scale the
+  // image down to the page with the "cm" matrix below rather than using
+  // its pixel size directly).
+  const pageW = Math.max(1, canvas._logicalW * 0.75);
+  const pageH = Math.max(1, canvas._logicalH * 0.75);
+
+  const enc = new TextEncoder();
+  const parts = [];      // array of Uint8Array, concatenated at the end
+  const offsets = [null]; // offsets[n] = byte offset of "n 0 obj"; index 0 unused
+  let pos = 0;
+  function push(bytesOrStr) {
+    const bytes = typeof bytesOrStr === 'string' ? enc.encode(bytesOrStr) : bytesOrStr;
+    parts.push(bytes);
+    pos += bytes.length;
+  }
+  function beginObj(n) { offsets[n] = pos; push(`${n} 0 obj\n`); }
+
+  push('%PDF-1.4\n%\xFF\xFF\xFF\xFF\n');
+
+  beginObj(1); push('<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+  beginObj(2); push('<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n');
+  beginObj(3);
+  push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] `
+     + `/Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>\nendobj\n`);
+
+  const content = `q\n${pageW} 0 0 ${pageH} 0 0 cm\n/Im0 Do\nQ`;
+  beginObj(4);
+  push(`<< /Length ${enc.encode(content).length} >>\nstream\n${content}\nendstream\nendobj\n`);
+
+  beginObj(5);
+  push(`<< /Type /XObject /Subtype /Image /Width ${png.width} /Height ${png.height} `
+     + `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode${decodeParms} `
+     + `/Length ${imageBytes.length} >>\nstream\n`);
+  push(imageBytes);
+  push('\nendstream\nendobj\n');
+
+  const xrefStart = pos;
+  push(`xref\n0 6\n0000000000 65535 f \n`);
+  for (let n = 1; n <= 5; n++) push(`${String(offsets[n]).padStart(10,'0')} 00000 n \n`);
+  push(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`);
+
+  return new Blob(parts, { type: 'application/pdf' });
+}
+
+// Reads just enough of a data:image/png;base64,... URL to get IHDR fields
+// and the concatenated, still-compressed IDAT payload — see
+// canvasToSinglePagePDF for why the compressed bytes are used as-is.
+function parsePNGForPDF(dataURL) {
+  const binary = atob(dataURL.slice(dataURL.indexOf(',') + 1));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  const readU32 = off => (bytes[off]<<24 | bytes[off+1]<<16 | bytes[off+2]<<8 | bytes[off+3]) >>> 0;
+
+  let offset = 8; // past the 8-byte PNG signature
+  let width, height, bitDepth, colorType;
+  const idatChunks = [];
+  while (offset < bytes.length) {
+    const len  = readU32(offset);
+    const type = String.fromCharCode(bytes[offset+4], bytes[offset+5], bytes[offset+6], bytes[offset+7]);
+    const dataStart = offset + 8;
+    if (type === 'IHDR') {
+      width = readU32(dataStart); height = readU32(dataStart + 4);
+      bitDepth = bytes[dataStart + 8]; colorType = bytes[dataStart + 9];
+    } else if (type === 'IDAT') {
+      idatChunks.push(bytes.subarray(dataStart, dataStart + len));
+    } else if (type === 'IEND') {
+      break;
+    }
+    offset = dataStart + len + 4; // +4 skips the trailing CRC
+  }
+
+  let total = 0; for (const c of idatChunks) total += c.length;
+  const idat = new Uint8Array(total);
+  let o = 0; for (const c of idatChunks) { idat.set(c, o); o += c.length; }
+
+  return { width, height, bitDepth, colorType, idat };
+}
+
+// ── Export dropdown menu ─────────────────────────────────────────────────
+function toggleExportMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('exportMenu');
+  if (menu.style.display === 'flex') { closeExportMenu(); return; }
+  const rect = e.currentTarget.getBoundingClientRect();
+  menu.style.cssText = `display:flex;top:${rect.bottom+4+window.scrollY}px;left:${rect.left+window.scrollX}px;`;
+}
+function closeExportMenu() { document.getElementById('exportMenu').style.display = 'none'; }
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.export-menu') && !e.target.closest('#btnExport')) closeExportMenu();
+});
 
 // ── Toast ──────────────────────────────────────────────────────────────
 function showToast(msg) {
