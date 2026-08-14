@@ -34,7 +34,7 @@ Rejoice! Now there is _Simple Elegant Gantt Solution for You 9000 Ultra Professi
 - **Task info on hover** — hover a task to see its start date, end date and duration below the chart
 - **Current day indicator** — toggle a vertical line marking today on the chart
 - **Auto-save** — every change is silently saved to your browser's local storage, so closing and reopening the tab restores your work
-- **Export as a PNG** — save your Gantt chart as a high-resolution image
+- **Export as a PNG or PDF** — save your Gantt chart as a high-resolution image
 - **Save/Load** — save and share a chart as a single JSON file
 - **Dark mode** — automatically follows your system preference
 - **Certified Y2K compliant**
