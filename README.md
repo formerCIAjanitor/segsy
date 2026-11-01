@@ -1,5 +1,5 @@
 <h1 align="center" style="margin:0;">
-<img src="./assets/banner.png" alt="Segsy banner" width="800">
+<img src="./banner.png" alt="Segsy banner" width="800">
 </h1>
 <h3 align="center" style="margin: 0; margin-top: 0;">
 Segsy — it's either that or using Excel after it finishes its 1.9 GB update
@@ -17,7 +17,7 @@ Segsy — it's either that or using Excel after it finishes its 1.9 GB update
 [Segsy](https://formerCIAjanitor.github.io/segsy/) is a simple, lightweight Gantt chart editor that runs entirely in the browser, with everything contained in a single HTML file that you can download and use completely offline.
 
 <a href="https://formerCIAjanitor.github.io/segsy/">
-  <img src="./assets//screenshot.png" alt="Gantt chart screenshot" title="Launch Segsy!">
+  <img src="./screenshot.png" alt="Gantt chart screenshot" title="Launch Segsy!">
 </a>
 
 ## Features
