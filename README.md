@@ -1,5 +1,7 @@
 <h1 align="center" style="margin:0;">
+<a href="https://formerCIAjanitor.github.io/segsy/">
 <img src="./banner.png" alt="Segsy banner" width="800">
+</a>
 </h1>
 <h3 align="center" style="margin: 0; margin-top: 0;">
 Segsy — it's either that or using Excel after it finishes its 1.9 GB update
