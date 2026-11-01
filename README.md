@@ -8,8 +8,7 @@ Segsy — it's either that or using Excel after it finishes its 1.9 GB update
 <p align="center">
   <a href="#features">Features</a> •
   <a href="#limitations">Limitations</a> •
-<a href="#already-adopted-by-or-likely-soon-to-be-adopted-by">Adopted by</a> •
-  <a href="#license">License</a>
+<a href="#already-adopted-by-or-likely-soon-to-be-adopted-by">Adopted by</a>
 </p>
 
 ## Overview
